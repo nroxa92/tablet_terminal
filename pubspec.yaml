@@ -1,0 +1,70 @@
+# FILE: pubspec.yaml
+name: villa_ai_terminal
+description: AI Concierge and Management System for Villas.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # --- UI & DIZAJN ---
+  google_fonts: ^6.1.0
+  flutter_markdown: ^0.7.0
+  cupertino_icons: ^1.0.6
+  intl: ^0.19.0
+  flag: ^7.0.0
+  animate_do: ^3.3.4
+  qr_flutter: ^4.1.0
+  url_launcher: ^6.2.5
+  signature: ^5.5.0
+
+  # --- LOGIKA & STANJE ---
+  provider: ^6.1.1       
+  uuid: ^4.3.3
+  image: ^4.1.3
+
+  # --- AI MOZAK ---
+  google_generative_ai: ^0.4.0
+
+  # --- PODACI & MREŽA ---
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  shared_preferences: ^2.2.2
+  http: ^1.2.0
+  cloud_functions: ^4.6.0
+  path_provider: ^2.1.2
+
+  # --- HARDVER & OCR & FIREBASE ---
+  camera: ^0.10.5
+  permission_handler: ^11.3.0
+  google_mlkit_text_recognition: ^0.13.0 
+  firebase_core: ^2.27.0
+  firebase_auth: ^4.17.8
+  cloud_firestore: ^4.15.8
+  firebase_storage: ^11.6.9  # <--- DODANO za potpise
+  flutter_launcher_icons: ^0.13.1  
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.8
+  hive_generator: ^2.0.1
+
+flutter:
+  uses-material-design: true
+  
+  # ASSETS - ako imaš slike/fontove
+  # assets:
+  #   - assets/images/
+  #   - assets/icons/
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/icon.png"
+  min_sdk_android: 21

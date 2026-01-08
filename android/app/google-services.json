@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "510976438146",
+    "project_id": "villa-ai-admin",
+    "storage_bucket": "villa-ai-admin.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:510976438146:android:236f638ce3b4d0e4b6a99b",
+        "android_client_info": {
+          "package_name": "com.example.villa_ai_terminal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBDK-TBcUssubaU7CI7LY5TQ-2JjNlb4gs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
