@@ -1,6 +1,10 @@
 // FILE: lib/data/services/firestore_service.dart
 // OPIS: Sinkronizacija podataka s Firebase Firestore.
-// VERZIJA: 3.0 - Guests subcollection + Booking archive + Cleanup
+// VERZIJA: 5.1 - FIX: Kompatibilno s postojećim StorageService
+// DATUM: 2026-01-09
+//
+// ✅ STANDARD: SVE camelCase
+// ✅ KOMPATIBILNO: Koristi samo postojeće StorageService metode
 
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -59,19 +63,19 @@ class FirestoreService {
 
       final data = unitDoc.data()!;
 
-      // Spremi osnovne podatke
+      // ✅ camelCase polja
       await StorageService.setVillaData(
         data['name'] ?? 'Villa Guest',
         data['address'] ?? '',
-        data['wifi_ssid'] ?? '',
-        data['wifi_pass'] ?? '',
-        data['contact_phone'] ?? '',
+        data['wifiSsid'] ?? '', // ✅ camelCase
+        data['wifiPass'] ?? '', // ✅ camelCase
+        data['contactPhone'] ?? '',
       );
 
-      // Spremi kontakte ako postoje
-      if (data['contacts'] != null && data['contacts'] is Map) {
+      // ✅ contactOptions (camelCase)
+      if (data['contactOptions'] != null && data['contactOptions'] is Map) {
         final Map<String, String> contacts = {};
-        (data['contacts'] as Map).forEach((key, value) {
+        (data['contactOptions'] as Map).forEach((key, value) {
           contacts[key.toString()] = value.toString();
         });
         await StorageService.setContactOptions(contacts);
@@ -120,7 +124,7 @@ class FirestoreService {
         await StorageService.setMasterPin(data['hardResetPin'].toString());
       }
 
-      // 3. AI PROMPTS
+      // 3. AI PROMPTS (camelCase)
       final Map<String, String> aiPrompts = {};
 
       if (data['aiConcierge'] != null) {
@@ -150,25 +154,18 @@ class FirestoreService {
         await StorageService.setHouseRulesTranslations(rules);
       }
 
-      // 5. GOOGLE REVIEW URL (za Feedback screen)
+      // 5. GOOGLE REVIEW URL
       if (data['googleReviewUrl'] != null) {
         await StorageService.setGoogleReviewUrl(
             data['googleReviewUrl'].toString());
       }
 
-      // 6. CLEANER TASKS
-      if (data['cleanerTasks'] != null && data['cleanerTasks'] is List) {
-        final tasks = List<String>.from(data['cleanerTasks']);
+      // ✅ cleanerChecklist (camelCase) - Web Panel koristi ovo ime!
+      if (data['cleanerChecklist'] != null &&
+          data['cleanerChecklist'] is List) {
+        final tasks = List<String>.from(data['cleanerChecklist']);
         await StorageService.setCleanerTasks(tasks);
-      }
-
-      // 7. KONTAKTI VLASNIKA (ako su u settings)
-      if (data['ownerContacts'] != null && data['ownerContacts'] is Map) {
-        final Map<String, String> contacts = {};
-        (data['ownerContacts'] as Map).forEach((key, value) {
-          contacts[key.toString()] = value.toString();
-        });
-        await StorageService.setContactOptions(contacts);
+        debugPrint("✅ Loaded ${tasks.length} cleaner tasks");
       }
 
       debugPrint("✅ Owner settings synced");
@@ -188,13 +185,13 @@ class FirestoreService {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
 
-      // Traži aktivnu rezervaciju za danas
+      // ✅ Query koristi camelCase
       final snapshot = await _db
           .collection('bookings')
-          .where('unit_id', isEqualTo: unitId)
-          .where('end_date',
+          .where('unitId', isEqualTo: unitId) // ✅ camelCase
+          .where('endDate', // ✅ camelCase
               isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-          .orderBy('end_date')
+          .orderBy('endDate')
           .limit(1)
           .get();
 
@@ -207,9 +204,9 @@ class FirestoreService {
       final bookingDoc = snapshot.docs.first;
       final data = bookingDoc.data();
 
-      // Provjeri da li je rezervacija započela
-      final startDate = (data['start_date'] as Timestamp).toDate();
-      final endDate = (data['end_date'] as Timestamp).toDate();
+      // ✅ Sva polja su camelCase
+      final startDate = (data['startDate'] as Timestamp).toDate();
+      final endDate = (data['endDate'] as Timestamp).toDate();
 
       if (startDate.isAfter(now)) {
         debugPrint("ℹ️ Booking hasn't started yet");
@@ -217,20 +214,19 @@ class FirestoreService {
         return;
       }
 
-      // Spremi booking podatke
       await StorageService.setCurrentBooking(
-        guestName: data['guest_name'] ?? '',
+        guestName: data['guestName'] ?? '', // ✅ camelCase
         startDate: startDate,
         endDate: endDate,
-        guestCount: data['guest_count'] ?? 1,
+        guestCount: data['guestCount'] ?? 1, // ✅ camelCase
         bookingId: bookingDoc.id,
-        guestEmail: data['guest_email'],
-        guestPhone: data['guest_phone'],
-        notes: data['notes'],
+        guestEmail: data['guestEmail'], // ✅ camelCase
+        guestPhone: data['guestPhone'], // ✅ camelCase
+        notes: data['note'],
       );
 
       debugPrint(
-          "✅ Booking synced: ${data['guest_name']} (${data['guest_count']} guests)");
+          "✅ Booking synced: ${data['guestName']} (${data['guestCount']} guests)");
     } catch (e) {
       debugPrint("⚠️ Booking sync failed: $e");
     }
@@ -257,17 +253,18 @@ class FirestoreService {
 
     try {
       final now = DateTime.now();
+      // ✅ camelCase
       final snapshot = await _db
           .collection('bookings')
-          .where('unit_id', isEqualTo: unitId)
-          .where('end_date', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
-          .orderBy('end_date')
+          .where('unitId', isEqualTo: unitId) // ✅ camelCase
+          .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
+          .orderBy('endDate')
           .limit(1)
           .get();
 
       if (snapshot.docs.isNotEmpty) {
         final data = snapshot.docs.first.data();
-        return data['guest_count'] ?? 1;
+        return data['guestCount'] ?? 1; // ✅ camelCase
       }
     } catch (e) {
       debugPrint("⚠️ Error fetching guest count: $e");
@@ -276,7 +273,7 @@ class FirestoreService {
   }
 
   // ============================================================
-  // ⭐ GUESTS SUBCOLLECTION (NOVO!)
+  // ⭐ GUESTS SUBCOLLECTION
   // ============================================================
 
   /// Sprema gosta u subcollection bookings/{bookingId}/guests/{guestId}
@@ -291,7 +288,7 @@ class FirestoreService {
           .collection('guests')
           .add({
         ...guestData,
-        'created_at': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(), // ✅ camelCase
       });
 
       debugPrint('✅ Guest saved to subcollection: ${docRef.id}');
@@ -309,24 +306,22 @@ class FirestoreService {
   }) async {
     try {
       final batch = _db.batch();
-      final guestsRef = _db
-          .collection('bookings')
-          .doc(bookingId)
-          .collection('guests');
+      final guestsRef =
+          _db.collection('bookings').doc(bookingId).collection('guests');
 
       for (final guestData in guests) {
         final docRef = guestsRef.doc();
         batch.set(docRef, {
           ...guestData,
-          'created_at': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(), // ✅ camelCase
         });
       }
 
-      // Također ažuriraj booking dokument
+      // ✅ Update booking s camelCase poljima
       batch.update(_db.collection('bookings').doc(bookingId), {
-        'is_scanned': true,
-        'scanned_at': FieldValue.serverTimestamp(),
-        'scanned_guest_count': guests.length,
+        'isScanned': true, // ✅ camelCase
+        'scannedAt': FieldValue.serverTimestamp(), // ✅ camelCase
+        'scannedGuestCount': guests.length, // ✅ camelCase
       });
 
       await batch.commit();
@@ -354,7 +349,8 @@ class FirestoreService {
       }
       await batch.commit();
 
-      debugPrint('🗑️ Deleted ${guestsSnapshot.docs.length} guests from subcollection');
+      debugPrint(
+          '🗑️ Deleted ${guestsSnapshot.docs.length} guests from subcollection');
       return guestsSnapshot.docs.length;
     } catch (e) {
       debugPrint('❌ Delete guests error: $e');
@@ -363,18 +359,16 @@ class FirestoreService {
   }
 
   // ============================================================
-  // ⭐ BOOKING ARCHIVE (NOVO!)
+  // ⭐ BOOKING ARCHIVE
   // ============================================================
 
   /// Arhivira booking nakon check-outa
-  /// Kopira booking u archived_bookings i briše originalni
   static Future<void> archiveBooking(String bookingId) async {
     try {
       debugPrint('📦 Archiving booking: $bookingId');
 
-      // 1. Dohvati booking dokument
       final bookingDoc = await _db.collection('bookings').doc(bookingId).get();
-      
+
       if (!bookingDoc.exists) {
         debugPrint('⚠️ Booking not found: $bookingId');
         return;
@@ -382,7 +376,6 @@ class FirestoreService {
 
       final bookingData = bookingDoc.data()!;
 
-      // 2. Dohvati goste iz subcollection
       final guestsSnapshot = await _db
           .collection('bookings')
           .doc(bookingId)
@@ -391,29 +384,22 @@ class FirestoreService {
 
       final guests = guestsSnapshot.docs.map((doc) => doc.data()).toList();
 
-      // 3. Kreiraj arhivirani dokument
+      // ✅ Sva polja camelCase
       final archivedData = {
         ...bookingData,
-        'original_booking_id': bookingId,
-        'archived_at': FieldValue.serverTimestamp(),
-        'guests': guests, // Spremamo goste kao array u arhivi (OK jer je read-only)
+        'originalBookingId': bookingId, // ✅ camelCase
+        'archivedAt': FieldValue.serverTimestamp(), // ✅ camelCase
+        'guests': guests,
         'status': 'archived',
       };
 
-      // 4. Spremi u archived_bookings
       await _db.collection('archived_bookings').add(archivedData);
 
-      // 5. Obriši goste iz subcollection
       await deleteGuestsFromSubcollection(bookingId);
 
-      // 6. Obriši ili označi booking kao arhiviran
-      // Opcija A: Potpuno brisanje
-      // await _db.collection('bookings').doc(bookingId).delete();
-      
-      // Opcija B: Samo označi kao arhiviran (sigurnije)
       await _db.collection('bookings').doc(bookingId).update({
         'status': 'archived',
-        'archived_at': FieldValue.serverTimestamp(),
+        'archivedAt': FieldValue.serverTimestamp(), // ✅ camelCase
       });
 
       debugPrint('✅ Booking archived successfully');
@@ -424,16 +410,13 @@ class FirestoreService {
   }
 
   // ============================================================
-  // ⭐ CLEANER FINISH - COMPLETE CLEANUP (NOVO!)
+  // ⭐ CLEANER FINISH - COMPLETE CLEANUP
   // ============================================================
 
-  /// Kompletni cleanup nakon što čistačica završi
-  /// 1. Briše signatures
-  /// 2. Briše guest podatke
-  /// 3. Arhivira booking
-  static Future<Map<String, int>> performCheckoutCleanup(String bookingId) async {
+  static Future<Map<String, int>> performCheckoutCleanup(
+      String bookingId) async {
     debugPrint('🧹 Starting checkout cleanup for booking: $bookingId');
-    
+
     final results = {
       'signatures_deleted': 0,
       'guests_deleted': 0,
@@ -441,15 +424,12 @@ class FirestoreService {
     };
 
     try {
-      // 1. Briši signatures vezane uz booking
-      results['signatures_deleted'] = 
+      results['signatures_deleted'] =
           await SignatureStorageService.deleteSignaturesByBooking(bookingId);
 
-      // 2. Briši goste iz subcollection
-      results['guests_deleted'] = 
+      results['guests_deleted'] =
           await deleteGuestsFromSubcollection(bookingId);
 
-      // 3. Arhiviraj booking
       await archiveBooking(bookingId);
       results['booking_archived'] = 1;
 
@@ -476,12 +456,13 @@ class FirestoreService {
     if (unitId == null) throw "Tablet not registered (No Unit ID)";
 
     try {
+      // ✅ SVA polja camelCase
       final checkInData = {
-        'unit_id': unitId,
-        'owner_id': ownerId,
+        'ownerId': ownerId, // ✅ camelCase
+        'unitId': unitId, // ✅ camelCase
         'timestamp': FieldValue.serverTimestamp(),
-        'doc_type': docType,
-        'guest_data': guestData,
+        'docType': docType, // ✅ camelCase
+        'guestData': guestData, // ✅ camelCase
         'status': 'pending_review',
         'platform': 'Android Kiosk',
         'language': StorageService.getLanguage(),
@@ -489,7 +470,6 @@ class FirestoreService {
 
       await _db.collection('check_ins').add(checkInData);
 
-      // Također spremi lokalno
       await StorageService.addScannedGuest(guestData);
 
       debugPrint("✅ Check-in saved successfully");
@@ -500,7 +480,7 @@ class FirestoreService {
   }
 
   // ============================================================
-  // POTPIS KUĆNOG REDA (LEGACY - koristi novu metodu)
+  // POTPIS KUĆNOG REDA (LEGACY - za kompatibilnost)
   // ============================================================
 
   static Future<void> saveHouseRulesSignature(Uint8List signatureBytes) async {
@@ -512,16 +492,17 @@ class FirestoreService {
     try {
       final String base64Image = base64Encode(signatureBytes);
 
+      // ✅ SVA polja camelCase
       final Map<String, dynamic> signatureData = {
-        'unit_id': unitId,
-        'owner_id': ownerId,
+        'ownerId': ownerId, // ✅ camelCase
+        'unitId': unitId, // ✅ camelCase
         'timestamp': FieldValue.serverTimestamp(),
         'type': 'house_rules_consent',
-        'signature_image': base64Image,
+        'signatureImage': base64Image, // ✅ camelCase
         'status': 'signed',
         'platform': 'Android Kiosk',
         'language': StorageService.getLanguage(),
-        'guest_name': StorageService.getGuestName(),
+        'guestName': StorageService.getGuestName(), // ✅ camelCase
       };
 
       await _db.collection('signatures').add(signatureData);
@@ -546,15 +527,16 @@ class FirestoreService {
     if (unitId == null) throw "No Unit ID";
 
     try {
+      // ✅ SVA polja camelCase
       await _db.collection('feedback').add({
-        'unit_id': unitId,
-        'owner_id': ownerId,
+        'ownerId': ownerId, // ✅ camelCase
+        'unitId': unitId, // ✅ camelCase
         'rating': rating,
         'comment': comment ?? '',
         'timestamp': FieldValue.serverTimestamp(),
-        'guest_name': StorageService.getGuestName(),
+        'guestName': StorageService.getGuestName(), // ✅ camelCase
         'language': StorageService.getLanguage(),
-        'read': false,
+        'isRead': false, // ✅ camelCase
         'platform': 'Android Kiosk',
       });
 
@@ -566,7 +548,7 @@ class FirestoreService {
   }
 
   // ============================================================
-  // AI CHAT LOGS (Opcionalno)
+  // AI CHAT LOGS
   // ============================================================
 
   static Future<void> logAIConversation({
@@ -580,18 +562,18 @@ class FirestoreService {
     if (unitId == null) return;
 
     try {
+      // ✅ SVA polja camelCase
       await _db.collection('ai_logs').add({
-        'unit_id': unitId,
-        'owner_id': ownerId,
-        'agent_id': agentId,
-        'user_message': userMessage,
-        'ai_response': aiResponse,
+        'ownerId': ownerId, // ✅ camelCase
+        'unitId': unitId, // ✅ camelCase
+        'agentId': agentId, // ✅ camelCase
+        'userMessage': userMessage, // ✅ camelCase
+        'aiResponse': aiResponse, // ✅ camelCase
         'timestamp': FieldValue.serverTimestamp(),
         'language': StorageService.getLanguage(),
       });
     } catch (e) {
       debugPrint("⚠️ AI log failed: $e");
-      // Ne rethrow - logging nije kritičan
     }
   }
 
@@ -612,14 +594,15 @@ class FirestoreService {
     try {
       final completedCount = tasks.values.where((v) => v).length;
 
+      // ✅ SVA polja camelCase
       await _db.collection('cleaning_logs').add({
-        'unit_id': unitId,
-        'owner_id': ownerId,
-        'booking_id': bookingId, // Poveznica s bookingom
+        'ownerId': ownerId, // ✅ camelCase
+        'unitId': unitId, // ✅ camelCase
+        'bookingId': bookingId, // ✅ camelCase
         'timestamp': FieldValue.serverTimestamp(),
         'tasks': tasks,
-        'completed_count': completedCount,
-        'total_count': tasks.length,
+        'completedCount': completedCount, // ✅ camelCase
+        'totalCount': tasks.length, // ✅ camelCase
         'notes': notes,
         'status': completedCount == tasks.length ? 'completed' : 'partial',
         'platform': 'Android Kiosk',
@@ -633,33 +616,39 @@ class FirestoreService {
   }
 
   // ============================================================
-  // GALLERY (Screensaver images)
+  // GALLERY / SCREENSAVER IMAGES
   // ============================================================
 
+  /// Dohvaća slike za screensaver
+  /// ✅ Zadržano ime getGalleryImages za kompatibilnost s screensaver_screen.dart
   static Future<List<String>> getGalleryImages() async {
     try {
       final ownerId = StorageService.getOwnerId();
 
-      // Prvo probaj owner-specific gallery
-      if (ownerId != null) {
-        final ownerGallery = await _db
-            .collection('gallery')
-            .where('owner_id', isEqualTo: ownerId)
-            .get();
+      if (ownerId == null) return [];
 
-        if (ownerGallery.docs.isNotEmpty) {
-          return ownerGallery.docs
-              .map((doc) => doc.data()['url'] as String?)
-              .where((url) => url != null && url.isNotEmpty)
-              .cast<String>()
-              .toList();
-        }
+      // ✅ Prvo probaj novu kolekciju screensaver_images
+      var snapshot = await _db
+          .collection('screensaver_images')
+          .where('ownerId', isEqualTo: ownerId) // ✅ camelCase
+          .orderBy('uploadedAt', descending: true) // ✅ camelCase
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot.docs
+            .map((doc) => doc.data()['url'] as String?)
+            .where((url) => url != null && url.isNotEmpty)
+            .cast<String>()
+            .toList();
       }
 
-      // Fallback na globalnu galeriju
-      final globalGallery = await _db.collection('gallery').get();
+      // Fallback na staru gallery kolekciju
+      snapshot = await _db
+          .collection('gallery')
+          .where('ownerId', isEqualTo: ownerId)
+          .get();
 
-      return globalGallery.docs
+      return snapshot.docs
           .map((doc) => doc.data()['url'] as String?)
           .where((url) => url != null && url.isNotEmpty)
           .cast<String>()
@@ -680,13 +669,14 @@ class FirestoreService {
 
     try {
       final now = DateTime.now();
+      // ✅ camelCase
       final snapshot = await _db
           .collection('bookings')
-          .where('unit_id', isEqualTo: unitId)
-          .where('end_date', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
+          .where('unitId', isEqualTo: unitId) // ✅ camelCase
+          .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
           .where('status', isNotEqualTo: 'archived')
           .orderBy('status')
-          .orderBy('end_date')
+          .orderBy('endDate')
           .limit(1)
           .get();
 

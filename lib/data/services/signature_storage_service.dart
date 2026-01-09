@@ -1,6 +1,10 @@
 // FILE: lib/data/services/signature_storage_service.dart
-// OPIS: Upload potpisa u Firebase Storage umjesto base64 u Firestore
-// VERZIJA: 1.1 - Fixed imports
+// OPIS: Upload potpisa u Firebase Storage, URL u Firestore
+// VERZIJA: 5.1 - FIX: Kompatibilno s postojećim StorageService
+// DATUM: 2026-01-09
+//
+// ✅ STANDARD: SVE camelCase
+// ✅ STORAGE PATH: signatures/{ownerId}/{signatureId}.png
 
 import 'package:flutter/foundation.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -16,11 +20,11 @@ class SignatureStorageService {
   // ============================================================
 
   /// Upload potpisa u Storage i vraća URL
-  /// 
+  ///
   /// [signatureBytes] - PNG bytes potpisa
   /// [bookingId] - ID bookinga za povezivanje
   /// [guestName] - Ime gosta
-  /// 
+  ///
   /// Returns: Download URL slike
   static Future<String> uploadSignature({
     required Uint8List signatureBytes,
@@ -28,30 +32,29 @@ class SignatureStorageService {
     required String guestName,
   }) async {
     try {
-      final unitId = StorageService.getUnitId() ?? 'unknown';
+      final ownerId = StorageService.getOwnerId() ?? 'unknown';
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      
-      // Putanja: signatures/{unitId}/{bookingId}_{timestamp}.png
-      final String path = 'signatures/$unitId/${bookingId}_$timestamp.png';
-      
-      // Upload
+
+      // ✅ Path koristi ownerId
+      // Storage path: signatures/{ownerId}/{bookingId}_{timestamp}.png
+      final String path = 'signatures/$ownerId/${bookingId}_$timestamp.png';
+
       final ref = _storage.ref().child(path);
       final uploadTask = await ref.putData(
         signatureBytes,
         SettableMetadata(
           contentType: 'image/png',
           customMetadata: {
-            'booking_id': bookingId,
-            'guest_name': guestName,
-            'unit_id': unitId,
-            'uploaded_at': DateTime.now().toIso8601String(),
+            'bookingId': bookingId, // ✅ camelCase
+            'guestName': guestName, // ✅ camelCase
+            'ownerId': ownerId, // ✅ camelCase
+            'uploadedAt': DateTime.now().toIso8601String(),
           },
         ),
       );
 
-      // Dohvati URL
       final downloadUrl = await uploadTask.ref.getDownloadURL();
-      
+
       debugPrint('✅ Signature uploaded: $path');
       return downloadUrl;
     } catch (e) {
@@ -65,6 +68,8 @@ class SignatureStorageService {
   // ============================================================
 
   /// Sprema signature dokument u Firestore s referencom na booking
+  ///
+  /// ⚠️ KRITIČNO: bookingId je OBAVEZAN za GDPR cleanup!
   static Future<String> saveSignatureWithBooking({
     required Uint8List signatureBytes,
     required String bookingId,
@@ -78,6 +83,7 @@ class SignatureStorageService {
       final ownerId = StorageService.getOwnerId();
 
       if (unitId == null) throw "No Unit ID";
+      if (ownerId == null) throw "No Owner ID";
 
       // 1. Upload sliku u Storage
       final signatureUrl = await uploadSignature(
@@ -87,24 +93,21 @@ class SignatureStorageService {
       );
 
       // 2. Spremi dokument u Firestore
+      // ✅ SVA polja camelCase
       final signatureData = {
-        'unit_id': unitId,
-        'owner_id': ownerId,
-        'booking_id': bookingId, // ← KLJUČNO za cleanup!
-        'guest_name': guestName,
-        'first_name': firstName,
-        'last_name': lastName,
-        'signature_url': signatureUrl, // URL umjesto base64
-        'signed_at': FieldValue.serverTimestamp(),
-        'type': 'house_rules_consent',
+        'ownerId': ownerId, // ✅ camelCase
+        'bookingId': bookingId, // ✅ camelCase - KRITIČNO za cleanup!
+        'unitId': unitId, // ✅ camelCase
+        'guestName': guestName, // ✅ camelCase
+        'signatureUrl': signatureUrl, // ✅ camelCase - Storage URL!
+        'signedAt': FieldValue.serverTimestamp(), // ✅ camelCase
         'language': StorageService.getLanguage(),
-        'rules_version': rulesVersion,
-        'status': 'active',
+        'rulesVersion': rulesVersion, // ✅ camelCase
         'platform': 'Android Kiosk',
       };
 
       final docRef = await _db.collection('signatures').add(signatureData);
-      
+
       debugPrint('✅ Signature saved: ${docRef.id} for booking: $bookingId');
       return docRef.id;
     } catch (e) {
@@ -114,16 +117,60 @@ class SignatureStorageService {
   }
 
   // ============================================================
+  // SAVE GUEST SIGNATURE (za subcollection)
+  // ============================================================
+
+  /// Sprema potpis gosta i ažurira guest dokument u subcollection
+  static Future<String> saveGuestSignature({
+    required Uint8List signatureBytes,
+    required String bookingId,
+    required String guestId,
+    required String guestName,
+  }) async {
+    try {
+      final ownerId = StorageService.getOwnerId();
+      if (ownerId == null) throw "No Owner ID";
+
+      // 1. Upload u Storage
+      final signatureUrl = await uploadSignature(
+        signatureBytes: signatureBytes,
+        bookingId: bookingId,
+        guestName: guestName,
+      );
+
+      // 2. Update guest dokument u subcollection
+      // ✅ camelCase
+      await _db
+          .collection('bookings')
+          .doc(bookingId)
+          .collection('guests')
+          .doc(guestId)
+          .update({
+        'signatureUrl': signatureUrl, // ✅ camelCase
+        'signedAt': FieldValue.serverTimestamp(), // ✅ camelCase
+      });
+
+      debugPrint('✅ Guest signature saved for: $guestId');
+      return signatureUrl;
+    } catch (e) {
+      debugPrint('❌ Save guest signature error: $e');
+      rethrow;
+    }
+  }
+
+  // ============================================================
   // DELETE SIGNATURES BY BOOKING ID
   // ============================================================
 
   /// Briše sve potpise vezane uz booking (poziva se na FINISH)
+  ///
+  /// ⚠️ Ovo je GDPR cleanup - briše osobne podatke nakon checkout-a
   static Future<int> deleteSignaturesByBooking(String bookingId) async {
     try {
-      // 1. Dohvati sve signature dokumente za ovaj booking
+      // ✅ Query koristi camelCase
       final querySnapshot = await _db
           .collection('signatures')
-          .where('booking_id', isEqualTo: bookingId)
+          .where('bookingId', isEqualTo: bookingId) // ✅ camelCase
           .get();
 
       if (querySnapshot.docs.isEmpty) {
@@ -133,19 +180,18 @@ class SignatureStorageService {
 
       int deletedCount = 0;
 
-      // 2. Briši svaki dokument i njegovu sliku iz Storage-a
       for (final doc in querySnapshot.docs) {
         try {
           final data = doc.data();
-          
+
           // Briši sliku iz Storage-a ako postoji URL
-          if (data['signature_url'] != null) {
+          final signatureUrl = data['signatureUrl']; // ✅ camelCase
+          if (signatureUrl != null && signatureUrl.toString().isNotEmpty) {
             try {
-              final ref = _storage.refFromURL(data['signature_url']);
+              final ref = _storage.refFromURL(signatureUrl);
               await ref.delete();
               debugPrint('🗑️ Deleted signature image: ${ref.fullPath}');
             } catch (storageError) {
-              // Možda je slika već obrisana
               debugPrint('⚠️ Storage delete warning: $storageError');
             }
           }
@@ -173,10 +219,10 @@ class SignatureStorageService {
   /// Briše sve potpise za unit (factory reset scenario)
   static Future<int> deleteSignaturesByUnit(String unitId) async {
     try {
+      // ✅ camelCase
       final querySnapshot = await _db
           .collection('signatures')
-          .where('unit_id', isEqualTo: unitId)
-          .where('status', isEqualTo: 'active')
+          .where('unitId', isEqualTo: unitId) // ✅ camelCase
           .get();
 
       int deletedCount = 0;
@@ -184,11 +230,12 @@ class SignatureStorageService {
 
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
-        
+
         // Briši sliku iz Storage-a
-        if (data['signature_url'] != null) {
+        final signatureUrl = data['signatureUrl']; // ✅ camelCase
+        if (signatureUrl != null) {
           try {
-            final ref = _storage.refFromURL(data['signature_url']);
+            final ref = _storage.refFromURL(signatureUrl);
             await ref.delete();
           } catch (_) {}
         }
@@ -203,6 +250,76 @@ class SignatureStorageService {
     } catch (e) {
       debugPrint('❌ Delete unit signatures error: $e');
       return 0;
+    }
+  }
+
+  // ============================================================
+  // DELETE SIGNATURES BY OWNER ID (za Account Delete / GDPR)
+  // ============================================================
+
+  /// Briše sve potpise za vlasnika (GDPR - pravo na zaborav)
+  static Future<int> deleteSignaturesByOwner(String ownerId) async {
+    try {
+      // ✅ camelCase
+      final querySnapshot = await _db
+          .collection('signatures')
+          .where('ownerId', isEqualTo: ownerId) // ✅ camelCase
+          .get();
+
+      int deletedCount = 0;
+
+      for (final doc in querySnapshot.docs) {
+        try {
+          final data = doc.data();
+
+          // Briši sliku iz Storage-a
+          final signatureUrl = data['signatureUrl']; // ✅ camelCase
+          if (signatureUrl != null) {
+            try {
+              final ref = _storage.refFromURL(signatureUrl);
+              await ref.delete();
+            } catch (_) {}
+          }
+
+          await doc.reference.delete();
+          deletedCount++;
+        } catch (e) {
+          debugPrint('⚠️ Error deleting signature ${doc.id}: $e');
+        }
+      }
+
+      debugPrint('✅ Deleted $deletedCount signatures for owner: $ownerId');
+      return deletedCount;
+    } catch (e) {
+      debugPrint('❌ Delete owner signatures error: $e');
+      return 0;
+    }
+  }
+
+  // ============================================================
+  // GET SIGNATURES FOR BOOKING
+  // ============================================================
+
+  /// Dohvaća sve potpise za booking
+  static Future<List<Map<String, dynamic>>> getSignaturesForBooking(
+      String bookingId) async {
+    try {
+      // ✅ camelCase
+      final querySnapshot = await _db
+          .collection('signatures')
+          .where('bookingId', isEqualTo: bookingId) // ✅ camelCase
+          .orderBy('signedAt', descending: true) // ✅ camelCase
+          .get();
+
+      return querySnapshot.docs
+          .map((doc) => {
+                'id': doc.id,
+                ...doc.data(),
+              })
+          .toList();
+    } catch (e) {
+      debugPrint('❌ Get signatures error: $e');
+      return [];
     }
   }
 }

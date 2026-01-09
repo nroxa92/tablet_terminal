@@ -1,6 +1,9 @@
 // FILE: lib/ui/screens/cleaner/cleaner_tasks_screen.dart
 // OPIS: Checklist za čistačice s taskovima iz Web Panela + napomena.
-// VERZIJA: 3.1 - Fixed unused variables
+// VERZIJA: 4.0 - SYNC FIX: Koristi 'cleanerChecklist' (ne 'cleanerTasks')
+// DATUM: 2026-01-09
+//
+// ⚠️ PROMJENA: Web Panel koristi 'cleanerChecklist', ne 'cleanerTasks'!
 
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
@@ -71,15 +74,24 @@ class _CleanerTasksScreenState extends State<CleanerTasksScreen> {
       if (settingsDoc.exists && settingsDoc.data() != null) {
         final data = settingsDoc.data()!;
 
-        // Čitamo cleanerTasks polje (lista stringova)
-        if (data['cleanerTasks'] != null) {
+        // ✅ FIX: Koristi 'cleanerChecklist' (kako Web Panel sprema)
+        if (data['cleanerChecklist'] != null &&
+            data['cleanerChecklist'] is List) {
+          taskList = List<String>.from(data['cleanerChecklist']);
+          debugPrint('✅ Loaded ${taskList.length} tasks from cleanerChecklist');
+        }
+        // Fallback za legacy 'cleanerTasks'
+        else if (data['cleanerTasks'] != null && data['cleanerTasks'] is List) {
           taskList = List<String>.from(data['cleanerTasks']);
+          debugPrint(
+              '⚠️ Loaded ${taskList.length} tasks from legacy cleanerTasks');
         }
       }
 
       // Ako nema taskova u bazi, koristi default
       if (taskList.isEmpty) {
         taskList = _getDefaultTasks();
+        debugPrint('ℹ️ Using default task list');
       }
 
       setState(() {
@@ -179,13 +191,13 @@ class _CleanerTasksScreenState extends State<CleanerTasksScreen> {
       );
 
       // ═══════════════════════════════════════════════════════
-      // ⭐ 2. FIREBASE CLEANUP - NOVO!
+      // ⭐ 2. FIREBASE CLEANUP - GDPR compliant
       // ═══════════════════════════════════════════════════════
       Map<String, int> cleanupResults = {};
-      
+
       if (_currentBookingId != null) {
         debugPrint('🧹 Starting Firebase cleanup...');
-        
+
         // Pokaži progress dialog
         if (mounted) {
           showDialog(
@@ -276,7 +288,7 @@ class _CleanerTasksScreenState extends State<CleanerTasksScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              
+
               // ⭐ Cleanup summary
               if (cleanupResults.isNotEmpty) ...[
                 Container(
@@ -319,7 +331,7 @@ class _CleanerTasksScreenState extends State<CleanerTasksScreen> {
                 ),
                 const SizedBox(height: 20),
               ],
-              
+
               const Text(
                 "Report sent to owner.\nTablet is ready for new guests.",
                 textAlign: TextAlign.center,
@@ -361,7 +373,7 @@ class _CleanerTasksScreenState extends State<CleanerTasksScreen> {
       );
     } catch (e) {
       debugPrint("❌ Error finishing: $e");
-      
+
       // Zatvori progress dialog ako je otvoren
       if (mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
@@ -380,7 +392,8 @@ class _CleanerTasksScreenState extends State<CleanerTasksScreen> {
     }
   }
 
-  Widget _buildCleanupRow(IconData icon, String label, int count, {bool isBoolean = false}) {
+  Widget _buildCleanupRow(IconData icon, String label, int count,
+      {bool isBoolean = false}) {
     return Row(
       children: [
         Icon(icon, color: Colors.grey, size: 16),
@@ -394,7 +407,9 @@ class _CleanerTasksScreenState extends State<CleanerTasksScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(
-            color: count > 0 ? Colors.green.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.2),
+            color: count > 0
+                ? Colors.green.withValues(alpha: 0.2)
+                : Colors.grey.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(
@@ -454,8 +469,8 @@ class _CleanerTasksScreenState extends State<CleanerTasksScreen> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
-                                color:
-                                    const Color(0xFFD4AF37).withValues(alpha: 0.2),
+                                color: const Color(0xFFD4AF37)
+                                    .withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: const Row(
