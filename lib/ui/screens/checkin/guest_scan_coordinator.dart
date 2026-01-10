@@ -1,19 +1,19 @@
 // FILE: lib/ui/screens/checkin/guest_scan_coordinator.dart
-// VERZIJA: 5.1 - AUTO-SCAN + FIKSNI LAYOUT + SUBCOLLECTION
+// VERZIJA: 6.0 - FAZA 3 + 3.5: Sentry tracking, Validacija, Success Screen
 //
-// FEATURES:
+// NOVE ZNAČAJKE:
+// - ⭐ Sentry eventi za sve korake (start, scan, validation, complete/fail)
+// - ⭐ Validacija podataka prije spremanja
+// - ⭐ Success screen s animacijom nakon uspješnog check-ina
+// - ⭐ Mjerenje trajanja check-in procesa
+// - ⭐ Error boundary za graceful error handling
+//
+// POSTOJEĆE:
 // - AUTO-SCAN: Automatsko slikanje svakih 1.5s dok ne prepozna dokument
 // - Stražnja kamera + fizičko zrcalo
-// - Dropdown za države (umjesto grida)
-// - Fiksni layout za 10" tablet (bez scrollanja)
 // - SAMO stražnja strana dokumenta (MRZ)
-// - ⭐ NOVO: Guests subcollection umjesto array
-//
-// POLJA:
-// - Vrsta dokumenta, Ime, Prezime, Broj dok., Datum rođenja
-// - Spol, Državljanstvo, Adresa, OIB (HR)
-//
-// GDPR: Slike se NE spremaju - brišu se odmah nakon OCR
+// - Guests subcollection umjesto array
+// - GDPR: Slike se NE spremaju
 
 import 'dart:async';
 import 'dart:io';
@@ -23,6 +23,10 @@ import 'package:camera/camera.dart';
 
 import 'package:villa_ai_terminal/data/services/ocr_service.dart';
 import 'package:villa_ai_terminal/data/services/firestore_service.dart';
+import 'package:villa_ai_terminal/data/services/sentry_service.dart';
+import 'package:villa_ai_terminal/data/services/checkin_validator.dart';
+import 'package:villa_ai_terminal/data/services/storage_service.dart';
+import 'checkin_success_screen.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GUEST MODEL
@@ -149,6 +153,9 @@ class _GuestScanCoordinatorState extends State<GuestScanCoordinator> {
 
   bool _isLoading = true;
 
+  // ⭐ NOVO: Mjerenje trajanja check-ina
+  DateTime? _checkInStartTime;
+
   @override
   void initState() {
     super.initState();
@@ -171,13 +178,35 @@ class _GuestScanCoordinatorState extends State<GuestScanCoordinator> {
           }
           _isLoading = false;
         });
+
+        // ⭐ SENTRY: Log check-in started
+        _checkInStartTime = DateTime.now();
+        SentryService.logCheckInStarted(
+          bookingId: widget.bookingId,
+          guestCount: _guestCount,
+        );
+
         debugPrint('📋 Booking: $_guestCount gostiju');
       } else {
         _showError('Booking nije pronađen');
+
+        // ⭐ SENTRY: Log check-in failed
+        SentryService.logCheckInFailed(
+          bookingId: widget.bookingId,
+          reason: 'Booking not found',
+        );
       }
     } catch (e) {
       debugPrint('❌ Load booking error: $e');
       _showError('Greška pri učitavanju: $e');
+
+      // ⭐ SENTRY: Capture exception
+      SentryService.captureException(
+        e,
+        hint: 'Failed to load booking',
+        category: 'checkin',
+        extras: {'booking_id': widget.bookingId},
+      );
     }
   }
 
@@ -190,6 +219,13 @@ class _GuestScanCoordinatorState extends State<GuestScanCoordinator> {
   }
 
   void _onDocumentSelected(String docType, String country) {
+    // ⭐ SENTRY: Log user action
+    SentryService.logUserAction('document_selected', details: {
+      'doc_type': docType,
+      'country': country,
+      'guest_number': _currentGuestIndex + 1,
+    });
+
     setState(() {
       _selectedDocType = docType;
       _selectedCountry = country;
@@ -214,7 +250,42 @@ class _GuestScanCoordinatorState extends State<GuestScanCoordinator> {
     });
   }
 
-  void _onGuestConfirmed(Guest guest) {
+  void _onGuestConfirmed(Guest guest) async {
+    // ⭐ VALIDACIJA prije spremanja
+    final validationResult = CheckInValidator.validateGuest(
+      guest.toMap(),
+      countryCode: _selectedCountry,
+      guestNumber: _currentGuestIndex + 1,
+    );
+
+    if (!validationResult.isValid) {
+      // Prikaži validation dialog
+      final shouldContinue = await showValidationDialog(
+        context,
+        result: validationResult,
+        allowContinue: false, // Ne dozvoli nastavak bez obaveznih polja
+      );
+
+      if (!shouldContinue) return;
+    } else if (validationResult.hasWarnings) {
+      // Prikaži warnings ali dozvoli nastavak
+      final shouldContinue = await showValidationDialog(
+        context,
+        result: validationResult,
+        title: 'Preporučena polja',
+        allowContinue: true,
+      );
+
+      if (!shouldContinue) return;
+    }
+
+    // ⭐ SENTRY: Log guest scan success
+    SentryService.logGuestScan(
+      guestNumber: _currentGuestIndex + 1,
+      success: true,
+      documentType: guest.documentType,
+    );
+
     setState(() {
       _scannedGuests.add(guest);
       _currentGuestIndex++;
@@ -237,30 +308,107 @@ class _GuestScanCoordinatorState extends State<GuestScanCoordinator> {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // ⭐ NOVA VERZIJA: Sprema goste u SUBCOLLECTION umjesto array
+  // ⭐ SPREMANJE S VALIDACIJOM I SUCCESS SCREEN
   // ═══════════════════════════════════════════════════════════════════════════
+
   Future<void> _saveAllGuests() async {
     try {
-      debugPrint('💾 Saving ${_scannedGuests.length} guests to subcollection...');
-      
-      final guestMaps = _scannedGuests.map((g) => g.toMap()).toList();
+      debugPrint(
+          '💾 Saving ${_scannedGuests.length} guests to subcollection...');
 
-      // ⭐ NOVO: Koristi subcollection umjesto array
+      // ⭐ Finalna validacija svih gostiju
+      final guestMaps = _scannedGuests.map((g) => g.toMap()).toList();
+      final validationResult = CheckInValidator.validateAllGuests(
+        guestMaps,
+        countryCode: _selectedCountry,
+      );
+
+      if (!validationResult.isValid) {
+        debugPrint('❌ Final validation failed');
+
+        SentryService.logCheckInFailed(
+          bookingId: widget.bookingId,
+          reason: 'Validation failed: ${validationResult.errors.join(", ")}',
+        );
+
+        _showError(
+            'Neki podaci nisu ispravni: ${validationResult.errors.first}');
+        setState(() => _currentPhase = 'confirmation');
+        return;
+      }
+
+      // ⭐ SENTRY: Log Firebase sync
+      SentryService.logFirebaseSync(success: true, collection: 'guests');
+
+      // Spremi u subcollection
       await FirestoreService.saveAllGuestsToSubcollection(
         bookingId: widget.bookingId,
         guests: guestMaps,
       );
 
       debugPrint('✅ Svi gosti spremljeni u subcollection!');
-      _navigateToDashboard();
+
+      // ⭐ Izračunaj trajanje check-ina
+      final checkInDuration = _checkInStartTime != null
+          ? DateTime.now().difference(_checkInStartTime!)
+          : const Duration(seconds: 0);
+
+      // ⭐ SENTRY: Log check-in completed
+      SentryService.logCheckInCompleted(
+        bookingId: widget.bookingId,
+        guestCount: _scannedGuests.length,
+        duration: checkInDuration,
+      );
+
+      // ⭐ SHOW SUCCESS SCREEN
+      _navigateToSuccessScreen(checkInDuration);
     } catch (e) {
       debugPrint('❌ Save error: $e');
       _showError('Greška: $e');
+
+      // ⭐ SENTRY: Capture exception
+      SentryService.captureException(
+        e,
+        hint: 'Failed to save guests',
+        category: 'checkin',
+        extras: {
+          'booking_id': widget.bookingId,
+          'guest_count': _scannedGuests.length,
+        },
+      );
+
+      SentryService.logCheckInFailed(
+        bookingId: widget.bookingId,
+        reason: 'Save error: $e',
+      );
+
+      setState(() => _currentPhase = 'confirmation');
     }
   }
 
-  void _navigateToDashboard() {
-    Navigator.pushReplacementNamed(context, '/dashboard');
+  void _navigateToSuccessScreen(Duration checkInDuration) {
+    final firstGuest = _scannedGuests.isNotEmpty ? _scannedGuests.first : null;
+    final guestName = firstGuest != null
+        ? '${firstGuest.firstName} ${firstGuest.lastName}'.trim()
+        : 'Gost';
+
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return CheckInSuccessScreen(
+            guestCount: _scannedGuests.length,
+            guestName: guestName,
+            villaName: StorageService.getVillaName(),
+            checkInDuration: checkInDuration,
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
   }
 
   @override
@@ -350,7 +498,7 @@ class _GuestScanCoordinatorState extends State<GuestScanCoordinator> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DOCUMENT SELECTION WIDGET
+// DOCUMENT SELECTION WIDGET (bez promjena)
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _DocumentSelectionWidget extends StatefulWidget {
@@ -420,7 +568,6 @@ class _DocumentSelectionWidgetState extends State<_DocumentSelectionWidget> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
                     Row(
                       children: [
                         IconButton(
@@ -446,9 +593,7 @@ class _DocumentSelectionWidgetState extends State<_DocumentSelectionWidget> {
                         ),
                       ],
                     ),
-
                     const Spacer(),
-
                     const Text(
                       'Odaberite\ndokument',
                       style: TextStyle(
@@ -463,21 +608,17 @@ class _DocumentSelectionWidgetState extends State<_DocumentSelectionWidget> {
                       'Vrstu dokumenta i državu izdavanja',
                       style: TextStyle(color: Colors.grey[500], fontSize: 16),
                     ),
-
                     const Spacer(flex: 2),
                   ],
                 ),
               ),
-
               const SizedBox(width: 48),
-
               // DESNA STRANA - Forme
               Expanded(
                 flex: 6,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // VRSTA DOKUMENTA
                     const Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
@@ -500,10 +641,7 @@ class _DocumentSelectionWidgetState extends State<_DocumentSelectionWidget> {
                             'PASSPORT', 'Putovnica', Icons.menu_book),
                       ],
                     ),
-
                     const SizedBox(height: 32),
-
-                    // DRŽAVA - DROPDOWN
                     const Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
@@ -555,10 +693,7 @@ class _DocumentSelectionWidgetState extends State<_DocumentSelectionWidget> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 40),
-
-                    // GUMB
                     SizedBox(
                       width: double.infinity,
                       height: 60,
@@ -631,7 +766,7 @@ class _DocumentSelectionWidgetState extends State<_DocumentSelectionWidget> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SCANNING SCREEN - LANDSCAPE LAYOUT + RUČNO SLIKANJE
+// SCANNING SCREEN (s Sentry integraci
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _ScanningScreen extends StatefulWidget {
@@ -675,7 +810,7 @@ class _ScanningScreenState extends State<_ScanningScreen>
   Timer? _autoScanTimer;
   bool _autoScanEnabled = true;
   int _scanAttempts = 0;
-  static const int _maxAttempts = 30; // Max 30 pokušaja
+  static const int _maxAttempts = 30;
 
   @override
   void initState() {
@@ -683,6 +818,12 @@ class _ScanningScreenState extends State<_ScanningScreen>
     WidgetsBinding.instance.addObserver(this);
     _guest = widget.guest;
     _initCamera();
+
+    // ⭐ SENTRY: Log scan screen opened
+    SentryService.logUserAction('scan_screen_opened', details: {
+      'guest_number': widget.guestNumber,
+      'doc_type': widget.docType,
+    });
   }
 
   @override
@@ -713,14 +854,10 @@ class _ScanningScreenState extends State<_ScanningScreen>
         return;
       }
 
-      // STRAŽNJA KAMERA - sa fizičkim zrcalom u kućištu
       final camera = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
-
-      debugPrint(
-          '📷 Using ${camera.lensDirection == CameraLensDirection.back ? "BACK" : "FRONT"} camera');
 
       _controller = CameraController(
         camera,
@@ -733,22 +870,20 @@ class _ScanningScreenState extends State<_ScanningScreen>
 
       if (mounted) {
         setState(() => _isInitialized = true);
-        // Pokreni auto-scan nakon kratke pauze
         Future.delayed(const Duration(milliseconds: 500), _startAutoScan);
       }
     } catch (e) {
       debugPrint('❌ Camera init error: $e');
       _setStatus('Greška kamere: $e');
+
+      SentryService.captureException(e,
+          hint: 'Camera init failed', category: 'ocr');
     }
   }
 
   void _setStatus(String message) {
     if (mounted) setState(() => _statusMessage = message);
   }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // AUTO-SCAN LOGIKA
-  // ═══════════════════════════════════════════════════════════════════════════
 
   void _startAutoScan() {
     if (!_autoScanEnabled || !mounted) return;
@@ -784,15 +919,14 @@ class _ScanningScreenState extends State<_ScanningScreen>
 
     _scanAttempts++;
 
-    setState(() {
-      _isProcessing = true;
-    });
+    // ⭐ SENTRY: Log auto-scan attempt
+    SentryService.logOcrAutoScan(
+        attemptNumber: _scanAttempts, foundData: false);
+
+    setState(() => _isProcessing = true);
 
     try {
       final XFile image = await _controller!.takePicture();
-
-      debugPrint('═══════════════════════════════════════════');
-      debugPrint('🤖 AUTO-SCAN #$_scanAttempts: ${image.path}');
 
       final data = await OCRService.scanDocument(
         imagePath: image.path,
@@ -800,22 +934,26 @@ class _ScanningScreenState extends State<_ScanningScreen>
         flipHorizontal: true,
       );
 
-      // Obriši sliku odmah (GDPR)
+      // GDPR - briši sliku
       try {
         await File(image.path).delete();
       } catch (_) {}
 
-      // Provjeri uspješnost
       final hasName = data['firstName'] != null || data['lastName'] != null;
       final hasDoc = data['documentNumber'] != null;
 
       if (hasName && hasDoc) {
-        // USPJEH! Zaustavi auto-scan
         _stopAutoScan();
-        debugPrint('✅ AUTO-SCAN USPJEŠAN!');
+
+        // ⭐ SENTRY: Log OCR success
+        SentryService.logOcrScan(
+          success: true,
+          documentType: widget.docType,
+          fieldsDetected: data.keys.length,
+        );
+
         _processOCRResult(data);
       } else {
-        debugPrint('⏳ Auto-scan: Čekam bolji rezultat...');
         if (mounted) {
           setState(() =>
               _statusMessage = '🔄 Skeniram... ($_scanAttempts/$_maxAttempts)');
@@ -823,12 +961,12 @@ class _ScanningScreenState extends State<_ScanningScreen>
       }
     } catch (e) {
       debugPrint('❌ Auto-scan error: $e');
+      SentryService.logOcrScan(success: false, errorType: e.toString());
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
   }
 
-  /// RUČNO SLIKANJE
   Future<void> _captureAndProcess() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (_isProcessing) return;
@@ -841,40 +979,31 @@ class _ScanningScreenState extends State<_ScanningScreen>
     try {
       final XFile image = await _controller!.takePicture();
 
-      debugPrint('═══════════════════════════════════════════');
-      debugPrint('📸 CAPTURED: ${image.path}');
-      debugPrint('🔄 Side: BACK (MRZ)');
-
-      // Pozovi OCR Service - UVIJEK stražnja strana
-      // Fizičko zrcalo zrcali sliku → potreban softverski flip
       final data = await OCRService.scanDocument(
         imagePath: image.path,
-        scanType: 'back', // Uvijek stražnja strana za MRZ
-        flipHorizontal: true, // FIZIČKO ZRCALO = potreban flip!
+        scanType: 'back',
+        flipHorizontal: true,
       );
 
-      // DEBUG
-      debugPrint('╔═══════════════════════════════════════════╗');
-      debugPrint('║           OCR REZULTATI                  ║');
-      debugPrint('╠═══════════════════════════════════════════╣');
-      data.forEach((key, value) {
-        if (key != 'raw' && key != 'lines' && value != null) {
-          debugPrint('║ $key: $value');
-        }
-      });
-      debugPrint('╚═══════════════════════════════════════════╝');
-
-      // Obriši temp sliku (GDPR) - NE SPREMAMO SLIKE!
+      // GDPR
       try {
         await File(image.path).delete();
-        debugPrint('🗑️ Slika obrisana (GDPR)');
       } catch (_) {}
 
-      // Procesiraj rezultate
       _processOCRResult(data);
+
+      // ⭐ SENTRY: Log manual capture
+      SentryService.logOcrScan(
+        success: data.isNotEmpty,
+        documentType: widget.docType,
+        fieldsDetected: data.keys.length,
+      );
     } catch (e) {
       debugPrint('❌ Capture error: $e');
       _setStatus('Greška: $e');
+
+      SentryService.captureException(e,
+          hint: 'Manual capture failed', category: 'ocr');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -882,63 +1011,72 @@ class _ScanningScreenState extends State<_ScanningScreen>
 
   void _processOCRResult(Map<String, dynamic> data) {
     bool updated = false;
+    int fieldsUpdated = 0;
 
-    // STRAŽNJA STRANA - MRZ podaci + adresa
     if (data['firstName'] != null && _guest.firstName.isEmpty) {
       _guest.firstName = data['firstName'].toString();
       _detectedFields['firstName'] = true;
       updated = true;
+      fieldsUpdated++;
     }
     if (data['lastName'] != null && _guest.lastName.isEmpty) {
       _guest.lastName = data['lastName'].toString();
       _detectedFields['lastName'] = true;
       updated = true;
+      fieldsUpdated++;
     }
     if (data['documentNumber'] != null && _guest.documentNumber.isEmpty) {
       _guest.documentNumber = data['documentNumber'].toString();
       _detectedFields['documentNumber'] = true;
       updated = true;
+      fieldsUpdated++;
     }
     if (data['dateOfBirth'] != null && _guest.dateOfBirth.isEmpty) {
       _guest.dateOfBirth = data['dateOfBirth'].toString();
       _detectedFields['dateOfBirth'] = true;
       updated = true;
+      fieldsUpdated++;
     }
     if (data['nationality'] != null && _guest.nationality.isEmpty) {
       _guest.nationality = data['nationality'].toString();
       _detectedFields['nationality'] = true;
       updated = true;
+      fieldsUpdated++;
     }
     if (data['sex'] != null && _guest.sex.isEmpty) {
       _guest.sex = data['sex'].toString();
       _detectedFields['sex'] = true;
       updated = true;
+      fieldsUpdated++;
     }
     if (data['address'] != null && _guest.address.isEmpty) {
       _guest.address = data['address'].toString();
       _detectedFields['address'] = true;
       updated = true;
+      fieldsUpdated++;
     }
     if (data['oib'] != null && _guest.oib.isEmpty) {
       _guest.oib = data['oib'].toString();
       _detectedFields['oib'] = true;
       updated = true;
+      fieldsUpdated++;
     }
     if (data['residenceCity'] != null && _guest.residenceCity.isEmpty) {
       _guest.residenceCity = data['residenceCity'].toString();
       updated = true;
+      fieldsUpdated++;
     }
-    // Vrsta dokumenta iz MRZ
     if (data['documentType'] != null && _guest.documentType.isEmpty) {
       _guest.documentType = data['documentType'].toString();
       _detectedFields['documentType'] = true;
       updated = true;
+      fieldsUpdated++;
     }
 
     if (updated) {
       widget.onUpdate(_guest);
       _showSuccessAnimation();
-      _setStatus('✅ Podaci prepoznati!');
+      _setStatus('✅ Prepoznato $fieldsUpdated polja!');
     } else {
       _setStatus('⚠️ Pokušajte ponovno');
     }
@@ -954,7 +1092,6 @@ class _ScanningScreenState extends State<_ScanningScreen>
   }
 
   void _goToNextStep() {
-    // Samo jedna strana - direktno na potvrdu
     widget.onComplete();
   }
 
@@ -981,10 +1118,9 @@ class _ScanningScreenState extends State<_ScanningScreen>
     final cameraWidth = size.width * 0.65;
     final cameraHeight = size.height;
 
-    // OKVIR ZA DOKUMENT - uži i viši za bolji fit osobne
     final bool isPassport = widget.docType == 'PASSPORT';
-    const double frameW = 320.0; // Uži
-    final double frameH = isPassport ? 230.0 : 200.0; // Viši ratio
+    const double frameW = 320.0;
+    final double frameH = isPassport ? 230.0 : 200.0;
 
     final frameX = (cameraWidth - frameW) / 2;
     final frameY = (cameraHeight - frameH) / 2;
@@ -993,13 +1129,13 @@ class _ScanningScreenState extends State<_ScanningScreen>
       backgroundColor: Colors.black,
       body: Row(
         children: [
-          // ========== LEFT: CAMERA (65%) ==========
+          // CAMERA (65%)
           SizedBox(
             width: cameraWidth,
             height: cameraHeight,
             child: Stack(
               children: [
-                // Camera preview - FLIP jer fizičko zrcalo zrcali sliku
+                // Camera preview
                 Positioned.fill(
                   child: _controller != null
                       ? Transform(
@@ -1010,40 +1146,33 @@ class _ScanningScreenState extends State<_ScanningScreen>
                       : Container(color: Colors.black),
                 ),
 
-                // Dark overlay - TOP
+                // Dark overlays
                 Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: frameY,
-                  child: Container(color: Colors.black.withValues(alpha: 0.85)),
-                ),
-                // Dark overlay - BOTTOM
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: frameY,
+                    child: Container(color: Colors.black.withValues(alpha: 0.85))),
                 Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: frameY,
-                  child: Container(color: Colors.black.withValues(alpha: 0.85)),
-                ),
-                // Dark overlay - LEFT
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: frameY,
+                    child: Container(color: Colors.black.withValues(alpha: 0.85))),
                 Positioned(
-                  top: frameY,
-                  left: 0,
-                  width: frameX,
-                  height: frameH,
-                  child: Container(color: Colors.black.withValues(alpha: 0.85)),
-                ),
-                // Dark overlay - RIGHT
+                    top: frameY,
+                    left: 0,
+                    width: frameX,
+                    height: frameH,
+                    child: Container(color: Colors.black.withValues(alpha: 0.85))),
                 Positioned(
-                  top: frameY,
-                  right: 0,
-                  width: frameX,
-                  height: frameH,
-                  child: Container(color: Colors.black.withValues(alpha: 0.85)),
-                ),
+                    top: frameY,
+                    right: 0,
+                    width: frameX,
+                    height: frameH,
+                    child: Container(color: Colors.black.withValues(alpha: 0.85))),
 
-                // Frame border
+                // Frame
                 Positioned(
                   left: frameX,
                   top: frameY,
@@ -1059,34 +1188,24 @@ class _ScanningScreenState extends State<_ScanningScreen>
                       ),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Stack(
-                      children: [
-                        // Corner decorations
-                        _buildCorner(true, true),
-                        _buildCorner(true, false),
-                        _buildCorner(false, true),
-                        _buildCorner(false, false),
-                        // Label
-                        Center(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'STRAŽNJA STRANA',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 2,
-                              ),
-                            ),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'STRAŽNJA STRANA',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 2,
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -1110,10 +1229,9 @@ class _ScanningScreenState extends State<_ScanningScreen>
                         child: Text(
                           'GOST ${widget.guestNumber} / ${widget.totalGuests}',
                           style: const TextStyle(
-                            color: Colors.black,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12),
                         ),
                       ),
                       const Spacer(),
@@ -1127,14 +1245,11 @@ class _ScanningScreenState extends State<_ScanningScreen>
                             borderRadius: BorderRadius.circular(15),
                             border: Border.all(color: Colors.white24),
                           ),
-                          child: const Text(
-                            'PRESKOČI →',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          child: const Text('PRESKOČI →',
+                              style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600)),
                         ),
                       ),
                     ],
@@ -1148,10 +1263,9 @@ class _ScanningScreenState extends State<_ScanningScreen>
                   right: 0,
                   child: Column(
                     children: [
-                      const Text(
-                        'Postavite STRAŽNJU stranu dokumenta u okvir',
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
-                      ),
+                      const Text('Postavite STRAŽNJU stranu dokumenta u okvir',
+                          style:
+                              TextStyle(color: Colors.white70, fontSize: 14)),
                       if (_statusMessage.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         Container(
@@ -1182,7 +1296,7 @@ class _ScanningScreenState extends State<_ScanningScreen>
             ),
           ),
 
-          // ========== RIGHT: PANEL (35%) ==========
+          // PANEL (35%)
           Expanded(
             child: Container(
               color: const Color(0xFF1A1A1A),
@@ -1190,29 +1304,21 @@ class _ScanningScreenState extends State<_ScanningScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header
                   const Row(
                     children: [
-                      Icon(
-                        Icons.credit_card,
-                        color: Color(0xFFD4AF37),
-                        size: 20,
-                      ),
+                      Icon(Icons.credit_card,
+                          color: Color(0xFFD4AF37), size: 20),
                       SizedBox(width: 8),
-                      Text(
-                        'PODACI S DOKUMENTA',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
-                        ),
-                      ),
+                      Text('PODACI S DOKUMENTA',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1)),
                     ],
                   ),
                   const Divider(color: Colors.white12, height: 24),
 
-                  // Fields - SAMO STRAŽNJA STRANA (MRZ)
                   Expanded(
                     child: SingleChildScrollView(
                       child: Column(
@@ -1245,7 +1351,6 @@ class _ScanningScreenState extends State<_ScanningScreen>
                     ),
                   ),
 
-                  // Progress
                   const SizedBox(height: 16),
                   LinearProgressIndicator(
                     value: _guest.completionProgress,
@@ -1255,13 +1360,12 @@ class _ScanningScreenState extends State<_ScanningScreen>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${(_guest.completionProgress * 100).toInt()}% prepoznato',
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
+                      '${(_guest.completionProgress * 100).toInt()}% prepoznato',
+                      style: const TextStyle(color: Colors.grey, fontSize: 12)),
 
                   const SizedBox(height: 16),
 
-                  // GUMB SLIKAJ
+                  // BUTTONS
                   SizedBox(
                     width: double.infinity,
                     height: 56,
@@ -1272,32 +1376,23 @@ class _ScanningScreenState extends State<_ScanningScreen>
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(
-                                color: Colors.black,
-                                strokeWidth: 2,
-                              ),
-                            )
+                                  color: Colors.black, strokeWidth: 2))
                           : const Icon(Icons.camera_alt, size: 24),
-                      label: Text(
-                        _isProcessing ? 'OBRAĐUJEM...' : '📸 SLIKAJ',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      label: Text(_isProcessing ? 'OBRAĐUJEM...' : '📸 SLIKAJ',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFD4AF37),
                         foregroundColor: Colors.black,
                         disabledBackgroundColor: Colors.grey,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                            borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ),
 
                   const SizedBox(height: 12),
 
-                  // GUMB NASTAVI
                   SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -1307,13 +1402,10 @@ class _ScanningScreenState extends State<_ScanningScreen>
                         foregroundColor: Colors.white,
                         side: const BorderSide(color: Colors.white24),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                            borderRadius: BorderRadius.circular(12)),
                       ),
-                      child: const Text(
-                        'ZAVRŠI SKENIRANJE →',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                      child: const Text('ZAVRŠI SKENIRANJE →',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
@@ -1337,30 +1429,22 @@ class _ScanningScreenState extends State<_ScanningScreen>
             : Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color:
-              isDetected ? Colors.green.withValues(alpha: 0.5) : Colors.white12,
-        ),
+            color: isDetected ? Colors.green.withValues(alpha: 0.5) : Colors.white12),
       ),
       child: Row(
         children: [
-          Icon(
-            isDetected ? Icons.check_circle : icon,
-            color: isDetected ? Colors.green : Colors.grey,
-            size: 20,
-          ),
+          Icon(isDetected ? Icons.check_circle : icon,
+              color: isDetected ? Colors.green : Colors.grey, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: Colors.grey[500],
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(label,
+                    style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
                 const SizedBox(height: 3),
                 Text(
                   value.isEmpty ? 'Čekam skeniranje...' : value,
@@ -1385,46 +1469,15 @@ class _ScanningScreenState extends State<_ScanningScreen>
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.black54,
-          borderRadius: BorderRadius.circular(10),
-        ),
+            color: Colors.black54, borderRadius: BorderRadius.circular(10)),
         child: Icon(icon, color: Colors.white, size: 22),
-      ),
-    );
-  }
-
-  Widget _buildCorner(bool isTop, bool isLeft) {
-    return Positioned(
-      top: isTop ? 0 : null,
-      bottom: isTop ? null : 0,
-      left: isLeft ? 0 : null,
-      right: isLeft ? null : 0,
-      child: Container(
-        width: 20,
-        height: 20,
-        decoration: BoxDecoration(
-          border: Border(
-            top: isTop
-                ? const BorderSide(color: Color(0xFFD4AF37), width: 3)
-                : BorderSide.none,
-            bottom: isTop
-                ? BorderSide.none
-                : const BorderSide(color: Color(0xFFD4AF37), width: 3),
-            left: isLeft
-                ? const BorderSide(color: Color(0xFFD4AF37), width: 3)
-                : BorderSide.none,
-            right: isLeft
-                ? BorderSide.none
-                : const BorderSide(color: Color(0xFFD4AF37), width: 3),
-          ),
-        ),
       ),
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CONFIRMATION WIDGET
+// CONFIRMATION WIDGET (s validacijom)
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _ConfirmationWidget extends StatefulWidget {
@@ -1491,15 +1544,8 @@ class _ConfirmationWidgetState extends State<_ConfirmationWidget> {
 
   void _onConfirm() {
     _updateGuest();
-    if (!_guest.isComplete) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Popunite: ${_guest.emptyFields.join(", ")}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
+
+    // Validacija se događa u parent widgetu
     widget.onConfirm(_guest);
   }
 
@@ -1516,9 +1562,8 @@ class _ConfirmationWidgetState extends State<_ConfirmationWidget> {
             decoration: BoxDecoration(
               color: const Color(0xFF1E1E1E),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: const Color(0xFFD4AF37).withValues(alpha: 0.5),
-              ),
+              border:
+                  Border.all(color: const Color(0xFFD4AF37).withValues(alpha: 0.5)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1532,29 +1577,22 @@ class _ConfirmationWidgetState extends State<_ConfirmationWidget> {
                         color: const Color(0xFFD4AF37).withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(
-                        Icons.fact_check,
-                        color: Color(0xFFD4AF37),
-                        size: 28,
-                      ),
+                      child: const Icon(Icons.fact_check,
+                          color: Color(0xFFD4AF37), size: 28),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'POTVRDA - GOST ${widget.guestNumber}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Text(
-                            'Provjerite i ispravite podatke',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
-                          ),
+                          Text('POTVRDA - GOST ${widget.guestNumber}',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold)),
+                          const Text('Provjerite i ispravite podatke',
+                              style:
+                                  TextStyle(color: Colors.grey, fontSize: 12)),
                         ],
                       ),
                     ),
@@ -1563,7 +1601,7 @@ class _ConfirmationWidgetState extends State<_ConfirmationWidget> {
 
                 const SizedBox(height: 24),
 
-                // Vrsta dokumenta i spol (read-only info)
+                // Info box
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -1578,31 +1616,30 @@ class _ConfirmationWidgetState extends State<_ConfirmationWidget> {
                           color: Color(0xFFD4AF37), size: 20),
                       const SizedBox(width: 12),
                       Text(
-                        _guest.documentType == 'PASSPORT'
-                            ? 'Putovnica'
-                            : 'Osobna iskaznica',
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
+                          _guest.documentType == 'PASSPORT'
+                              ? 'Putovnica'
+                              : 'Osobna iskaznica',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
                       const Spacer(),
                       const Icon(Icons.wc, color: Color(0xFFD4AF37), size: 20),
                       const SizedBox(width: 8),
-                      Text(
-                        _guest.sex.isNotEmpty ? _guest.sex : '-',
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
+                      Text(_guest.sex.isNotEmpty ? _guest.sex : '-',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
                       const SizedBox(width: 16),
                       const Icon(Icons.flag,
                           color: Color(0xFFD4AF37), size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        _guest.nationality.isNotEmpty
-                            ? _guest.nationality
-                            : widget.countryCode,
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
+                          _guest.nationality.isNotEmpty
+                              ? _guest.nationality
+                              : widget.countryCode,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -1655,8 +1692,7 @@ class _ConfirmationWidgetState extends State<_ConfirmationWidget> {
                           side: const BorderSide(color: Colors.orange),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                              borderRadius: BorderRadius.circular(10)),
                         ),
                       ),
                     ),
@@ -1677,8 +1713,7 @@ class _ConfirmationWidgetState extends State<_ConfirmationWidget> {
                           foregroundColor: Colors.black,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                              borderRadius: BorderRadius.circular(10)),
                         ),
                       ),
                     ),
@@ -1706,17 +1741,14 @@ class _ConfirmationWidgetState extends State<_ConfirmationWidget> {
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.white10),
-        ),
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.white10)),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.white10),
-        ),
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.white10)),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFFD4AF37)),
-        ),
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFD4AF37))),
       ),
     );
   }
