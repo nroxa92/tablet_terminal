@@ -29,6 +29,7 @@ class ErrorBoundary extends StatefulWidget {
 class _ErrorBoundaryState extends State<ErrorBoundary> {
   bool _hasError = false;
   dynamic _error;
+  // ignore: unused_field
   StackTrace? _stackTrace;
 
   @override

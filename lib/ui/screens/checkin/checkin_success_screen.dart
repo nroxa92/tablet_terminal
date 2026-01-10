@@ -143,7 +143,7 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
               colors: [
                 const Color(0xFF121212),
                 const Color(0xFF1A1A1A),
-                const Color(0xFF0D1F0D).withOpacity(0.3), // Subtle green tint
+                const Color(0xFF0D1F0D).withValues(alpha: 0.3), // Subtle green tint
               ],
             ),
           ),
@@ -168,7 +168,7 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF4CAF50).withOpacity(0.4),
+                          color: const Color(0xFF4CAF50).withValues(alpha: 0.4),
                           blurRadius: 30,
                           spreadRadius: 5,
                         ),
@@ -236,10 +236,10 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
                               vertical: 20,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.05),
+                              color: Colors.white.withValues(alpha: 0.05),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.1),
+                                color: Colors.white.withValues(alpha: 0.1),
                               ),
                             ),
                             child: Row(
