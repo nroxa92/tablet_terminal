@@ -1,6 +1,7 @@
 // FILE: lib/main.dart
 // OPIS: Entry point. Učitava servise, Firebase i provjerava auth session.
-// VERZIJA: 2.1 - Integriran GuestScanCoordinator
+// VERZIJA: 3.0 - FAZA 1: Sentry + Performance Monitoring
+// DATUM: 2026-01-10
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,8 @@ import 'config/theme.dart';
 import 'config/constants.dart';
 import 'data/services/storage_service.dart';
 import 'data/services/tablet_auth_service.dart';
+import 'data/services/sentry_service.dart';
+import 'data/services/performance_service.dart';
 import 'utils/inactivity_wrapper.dart';
 
 // EKRANI
@@ -23,7 +26,7 @@ import 'ui/screens/cleaner/cleaner_tasks_screen.dart';
 
 // CHECK-IN
 import 'ui/screens/checkin/checkin_intro_screen.dart';
-import 'ui/screens/checkin/guest_scan_coordinator.dart'; // NOVI IMPORT
+import 'ui/screens/checkin/guest_scan_coordinator.dart';
 import 'ui/screens/house_rules_screen.dart';
 
 // CHAT & FEEDBACK
@@ -31,6 +34,13 @@ import 'ui/screens/chat_screen.dart';
 import 'ui/screens/feedback_screen.dart';
 
 void main() async {
+  // Sentry wrapper - hvata sve unhandled exceptions
+  await SentryService.init(() async {
+    await _initializeApp();
+  });
+}
+
+Future<void> _initializeApp() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 1. ZAKLJUČAVANJE ORIJENTACIJE (LANDSCAPE)
@@ -53,17 +63,26 @@ void main() async {
     debugPrint("✅ FIREBASE CONNECTED");
     firebaseReady = true;
 
-    // 5. UČITAJ API KLJUČEVE IZ BAZE
+    // 5. FIREBASE PERFORMANCE
+    await PerformanceService.setEnabled(true);
+    debugPrint("✅ PERFORMANCE MONITORING ENABLED");
+
+    // 6. UČITAJ API KLJUČEVE IZ BAZE
     await AppConstants.loadFromFirebase();
-  } catch (e) {
+  } catch (e, stackTrace) {
     debugPrint("❌ FIREBASE/CONFIG ERROR: $e");
+    SentryService.captureException(e,
+        stackTrace: stackTrace, hint: 'Firebase init failed');
   }
 
-  // 6. PROVJERI POSTOJEĆI AUTH SESSION
+  // 7. PROVJERI POSTOJEĆI AUTH SESSION
   String initialRoute = '/setup';
 
   if (firebaseReady) {
     initialRoute = await _determineInitialRoute();
+
+    // 8. POSTAVI SENTRY KONTEKST
+    await SentryService.setDeviceContext();
   }
 
   runApp(VillaApp(initialRoute: initialRoute));
@@ -77,10 +96,13 @@ Future<String> _determineInitialRoute() async {
 
     if (!hasValidSession) {
       debugPrint("🔐 No valid session → Setup");
+      SentryService.addBreadcrumb(
+          message: 'No valid session', category: 'auth');
       return '/setup';
     }
 
     debugPrint("✅ Valid session found");
+    SentryService.addBreadcrumb(message: 'Session restored', category: 'auth');
 
     // 2. POKRENI AUTO REFRESH I HEARTBEAT
     TabletAuthService.startAutoRefresh();
@@ -112,8 +134,10 @@ Future<String> _determineInitialRoute() async {
 
     // Default - počni ispočetka
     return '/';
-  } catch (e) {
+  } catch (e, stackTrace) {
     debugPrint("❌ Route determination error: $e");
+    SentryService.captureException(e,
+        stackTrace: stackTrace, hint: 'Route determination failed');
     return '/setup';
   }
 }
@@ -129,10 +153,15 @@ class VillaApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Villa AI Concierge',
+      title: 'Vesta Lumina',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       navigatorKey: navigatorKey,
+
+      // NAVIGATION OBSERVER - logira navigaciju u Sentry
+      navigatorObservers: [
+        _SentryNavigatorObserver(),
+      ],
 
       // SCREENSAVER LOGIKA
       builder: (context, child) {
@@ -189,5 +218,32 @@ class VillaApp extends StatelessWidget {
         return null;
       },
     );
+  }
+}
+
+/// Navigator Observer za Sentry - logira sve navigacije
+class _SentryNavigatorObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    final from = previousRoute?.settings.name ?? 'unknown';
+    final to = route.settings.name ?? 'unknown';
+    SentryService.logNavigation(from, to);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    final from = route.settings.name ?? 'unknown';
+    final to = previousRoute?.settings.name ?? 'unknown';
+    SentryService.logNavigation(from, to);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    final from = oldRoute?.settings.name ?? 'unknown';
+    final to = newRoute?.settings.name ?? 'unknown';
+    SentryService.logNavigation(from, to);
   }
 }

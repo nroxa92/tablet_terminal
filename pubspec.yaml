@@ -1,8 +1,9 @@
 # FILE: pubspec.yaml
+# VERZIJA: 2.0 - FAZA 1: Sentry, Performance, Security
 name: villa_ai_terminal
-description: AI Concierge and Management System for Villas.
+description: Vesta Lumina Client Terminal - Premium Guest Experience System.
 publish_to: 'none'
-version: 1.0.0+1
+version: 2.0.0+1
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -37,6 +38,7 @@ dependencies:
   http: ^1.2.0
   cloud_functions: ^4.6.0
   path_provider: ^2.1.2
+  connectivity_plus: ^5.0.2        # FAZA 1: Za offline detection
 
   # --- HARDVER & OCR & FIREBASE ---
   camera: ^0.10.5
@@ -45,8 +47,12 @@ dependencies:
   firebase_core: ^2.27.0
   firebase_auth: ^4.17.8
   cloud_firestore: ^4.15.8
-  firebase_storage: ^11.6.9  # <--- DODANO za potpise
+  firebase_storage: ^11.6.9
+  firebase_performance: ^0.9.3+17  # FAZA 1: Performance Monitoring
   flutter_launcher_icons: ^0.13.1  
+
+  # --- FAZA 1: ERROR TRACKING ---
+  sentry_flutter: ^7.18.0
 
 dev_dependencies:
   flutter_test:

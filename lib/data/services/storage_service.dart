@@ -1,6 +1,7 @@
 // FILE: lib/data/services/storage_service.dart
 // OPIS: Lokalna pohrana podataka (Hive).
-// VERZIJA: 2.0 - Dodane metode za booking, kontakte, AI prompts
+// VERZIJA: 3.0 - FAZA 1: Dodane PIN lockout metode
+// DATUM: 2026-01-10
 
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -224,6 +225,94 @@ class StorageService {
 
   static Future<void> setMasterPin(String pin) async =>
       await _box.put('master_pin', pin);
+
+  // ============================================================
+  // 🔒 PIN BRUTE-FORCE PROTECTION (FAZA 1)
+  // ============================================================
+
+  /// Maksimalan broj pokušaja prije lockout-a
+  static const int maxPinAttempts = 3;
+
+  /// Trajanje lockout-a u sekundama (15 minuta)
+  static const int lockoutDurationSeconds = 15 * 60;
+
+  /// Dohvati broj neuspjelih pokušaja
+  static int getPinAttempts() {
+    return _box.get('pin_attempts', defaultValue: 0);
+  }
+
+  /// Inkrementiraj broj pokušaja
+  static Future<void> incrementPinAttempts() async {
+    final current = getPinAttempts();
+    await _box.put('pin_attempts', current + 1);
+    debugPrint('🔐 PIN attempts: ${current + 1}/$maxPinAttempts');
+  }
+
+  /// Resetiraj broj pokušaja (nakon uspješnog unosa)
+  static Future<void> resetPinAttempts() async {
+    await _box.put('pin_attempts', 0);
+    await _box.delete('pin_lockout_until');
+    debugPrint('🔓 PIN attempts reset');
+  }
+
+  /// Postavi lockout (poziva se kad se dosegne max pokušaja)
+  static Future<void> setPinLockout() async {
+    final lockoutUntil = DateTime.now().add(
+      const Duration(seconds: lockoutDurationSeconds),
+    );
+    await _box.put('pin_lockout_until', lockoutUntil.toIso8601String());
+    debugPrint('🔒 PIN locked until: $lockoutUntil');
+  }
+
+  /// Provjeri je li PIN zaključan
+  static bool isPinLockedOut() {
+    final lockoutStr = _box.get('pin_lockout_until');
+    if (lockoutStr == null) return false;
+
+    final lockoutUntil = DateTime.tryParse(lockoutStr);
+    if (lockoutUntil == null) return false;
+
+    final isLocked = DateTime.now().isBefore(lockoutUntil);
+
+    // Ako je lockout istekao, automatski resetiraj
+    if (!isLocked) {
+      resetPinAttempts();
+    }
+
+    return isLocked;
+  }
+
+  /// Dohvati preostalo vrijeme lockout-a u sekundama
+  static int getRemainingLockoutSeconds() {
+    final lockoutStr = _box.get('pin_lockout_until');
+    if (lockoutStr == null) return 0;
+
+    final lockoutUntil = DateTime.tryParse(lockoutStr);
+    if (lockoutUntil == null) return 0;
+
+    final remaining = lockoutUntil.difference(DateTime.now()).inSeconds;
+    return remaining > 0 ? remaining : 0;
+  }
+
+  /// Formatirano preostalo vrijeme (MM:SS)
+  static String getRemainingLockoutFormatted() {
+    final seconds = getRemainingLockoutSeconds();
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  /// Dohvati vrijeme kada lockout završava
+  static DateTime? getLockoutEndTime() {
+    final lockoutStr = _box.get('pin_lockout_until');
+    if (lockoutStr == null) return null;
+    return DateTime.tryParse(lockoutStr);
+  }
+
+  /// Provjeri treba li aktivirati lockout
+  static bool shouldLockout() {
+    return getPinAttempts() >= maxPinAttempts;
+  }
 
   // ============================================================
   // CLEANER TASKOVI (Cache s Web Panela)

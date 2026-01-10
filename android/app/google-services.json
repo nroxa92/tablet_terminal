@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "510976438146",
-    "project_id": "villa-ai-admin",
-    "storage_bucket": "villa-ai-admin.firebasestorage.app"
+    "project_number": "40815111868",
+    "project_id": "vls-admin",
+    "storage_bucket": "vls-admin.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:510976438146:android:236f638ce3b4d0e4b6a99b",
+        "mobilesdk_app_id": "1:40815111868:android:282172dea40c86c8fbeab9",
         "android_client_info": {
-          "package_name": "com.example.villa_ai_terminal"
+          "package_name": "com.vestalumina.tablet"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBDK-TBcUssubaU7CI7LY5TQ-2JjNlb4gs"
+          "current_key": "AIzaSyDgOgBXGgTyCvg_hR3pUvrjen2G0CpPW_Q"
         }
       ],
       "services": {
