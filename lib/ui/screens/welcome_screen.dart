@@ -1,6 +1,7 @@
 // FILE: lib/ui/screens/welcome_screen.dart
 // OPIS: Početni ekran za odabir jezika.
-// VERZIJA: 2.4 - ABC sortiranje + prevedena welcomeMessage
+// VERZIJA: 2.5 - Dodan hidden kiosk exit trigger
+// DATUM: 2025-01-10
 
 import 'package:flutter/material.dart';
 import 'package:flag/flag.dart';
@@ -8,6 +9,7 @@ import 'package:animate_do/animate_do.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../data/services/storage_service.dart';
 import '../widgets/welcome_message_overlay.dart';
+import '../widgets/kiosk_exit_dialog.dart'; // 🆕 DODANO
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -33,125 +35,175 @@ class WelcomeScreen extends StatelessWidget {
     return PopScope(
       canPop: false,
       child: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF121212),
-                Color(0xFF1E1E1E),
-              ],
-            ),
-          ),
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(vertical: 40),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // HEADER
-                  FadeInDown(
-                    duration: const Duration(milliseconds: 800),
-                    child: Column(
-                      children: [
-                        // LOGO ICON
-                        Container(
-                          width: 90,
-                          height: 90,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFD4AF37), Color(0xFFB8941F)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(25),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFD4AF37)
-                                    .withValues(alpha: 0.3),
-                                blurRadius: 25,
-                                offset: const Offset(0, 8),
+        body: Stack(
+          // 🆕 PROMIJENJENO: Stack umjesto Container
+          children: [
+            // ════════════════════════════════════════════════════════
+            // GLAVNI SADRŽAJ (postojeći kod)
+            // ════════════════════════════════════════════════════════
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF121212),
+                    Color(0xFF1E1E1E),
+                  ],
+                ),
+              ),
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // HEADER
+                      FadeInDown(
+                        duration: const Duration(milliseconds: 800),
+                        child: Column(
+                          children: [
+                            // LOGO ICON
+                            Container(
+                              width: 90,
+                              height: 90,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFFD4AF37),
+                                    Color(0xFFB8941F)
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(25),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFD4AF37)
+                                        .withValues(alpha: 0.3),
+                                    blurRadius: 25,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.villa,
-                            size: 50,
-                            color: Colors.black,
-                          ),
+                              child: const Icon(
+                                Icons.villa,
+                                size: 50,
+                                color: Colors.black,
+                              ),
+                            ),
+
+                            const SizedBox(height: 25),
+
+                            // TITLE
+                            Text(
+                              "VILLA CONCIERGE",
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 4,
+                                foreground: Paint()
+                                  ..shader = const LinearGradient(
+                                    colors: [
+                                      Color(0xFFD4AF37),
+                                      Color(0xFFFFD700)
+                                    ],
+                                  ).createShader(
+                                      const Rect.fromLTWH(0, 0, 300, 40)),
+                              ),
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            // SUBTITLE
+                            Text(
+                              "Please select your language",
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 16,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ],
                         ),
-
-                        const SizedBox(height: 25),
-
-                        // TITLE
-                        Text(
-                          "VILLA CONCIERGE",
-                          style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 4,
-                            foreground: Paint()
-                              ..shader = const LinearGradient(
-                                colors: [Color(0xFFD4AF37), Color(0xFFFFD700)],
-                              ).createShader(
-                                  const Rect.fromLTWH(0, 0, 300, 40)),
-                          ),
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // SUBTITLE
-                        Text(
-                          "Please select your language",
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 16,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 50),
-
-                  // LANGUAGE GRID
-                  FadeInUp(
-                    delay: const Duration(milliseconds: 300),
-                    duration: const Duration(milliseconds: 800),
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 900),
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Wrap(
-                        spacing: 16,
-                        runSpacing: 16,
-                        alignment: WrapAlignment.center,
-                        children: languages.map((lang) {
-                          return _buildLanguageCard(context, lang);
-                        }).toList(),
                       ),
-                    ),
-                  ),
 
-                  const SizedBox(height: 50),
+                      const SizedBox(height: 50),
 
-                  // FOOTER
-                  FadeInUp(
-                    delay: const Duration(milliseconds: 600),
-                    child: Text(
-                      "Powered by VillaOS",
-                      style: TextStyle(
-                        color: Colors.grey[700],
-                        fontSize: 12,
-                        letterSpacing: 2,
+                      // LANGUAGE GRID
+                      FadeInUp(
+                        delay: const Duration(milliseconds: 300),
+                        duration: const Duration(milliseconds: 800),
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 900),
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            alignment: WrapAlignment.center,
+                            children: languages.map((lang) {
+                              return _buildLanguageCard(context, lang);
+                            }).toList(),
+                          ),
+                        ),
                       ),
-                    ),
+
+                      const SizedBox(height: 50),
+
+                      // FOOTER
+                      FadeInUp(
+                        delay: const Duration(milliseconds: 600),
+                        child: Text(
+                          "Powered by VillaOS",
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 12,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
-          ),
+
+            // ════════════════════════════════════════════════════════
+            // 🆕 HIDDEN KIOSK EXIT TRIGGER (gornji desni kut)
+            // ════════════════════════════════════════════════════════
+            // 7x tap u kutu otvara PIN dialog
+            // Gost ne zna da je tu, ali vlasnik/čistačica znaju
+            Positioned(
+              top: 0,
+              right: 0,
+              child: HiddenKioskExitTrigger(
+                requiredTaps: 7,
+                resetDuration: const Duration(seconds: 3),
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  color: Colors.transparent, // Potpuno nevidljivo!
+                ),
+              ),
+            ),
+
+            // ════════════════════════════════════════════════════════
+            // 🆕 DRUGI HIDDEN TRIGGER (donji lijevi kut) - backup
+            // ════════════════════════════════════════════════════════
+            Positioned(
+              bottom: 0,
+              left: 0,
+              child: HiddenKioskExitTrigger(
+                requiredTaps: 10, // Više tapova za backup
+                resetDuration: const Duration(seconds: 5),
+                child: Container(
+                  width: 60,
+                  height: 60,
+                  color: Colors.transparent,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -1,7 +1,7 @@
 // FILE: lib/main.dart
 // OPIS: Entry point. Učitava servise, Firebase i provjerava auth session.
-// VERZIJA: 4.0 - FAZA 2: Offline Queue + Connectivity
-// DATUM: 2026-01-10
+// VERZIJA: 5.0 - FAZA 2.5: Kiosk Lockdown s remote kontrolom
+// DATUM: 2025-01-10
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,6 +16,7 @@ import 'data/services/sentry_service.dart';
 import 'data/services/performance_service.dart';
 import 'data/services/connectivity_service.dart';
 import 'data/services/offline_queue_service.dart';
+import 'data/services/kiosk_service.dart'; // 🆕 DODANO
 import 'utils/inactivity_wrapper.dart';
 
 // EKRANI
@@ -103,6 +104,15 @@ Future<void> _initializeApp() async {
 
     // 11. POSTAVI SENTRY KONTEKST
     await SentryService.setDeviceContext();
+
+    // ════════════════════════════════════════════════════════════════
+    // 🆕 12. KIOSK SERVICE INIT (nakon što imamo owner/unit ID)
+    // ════════════════════════════════════════════════════════════════
+    if (StorageService.isRegistered()) {
+      await KioskService.init();
+      debugPrint(
+          "🔒 Kiosk service ready. Enabled: ${KioskService.isKioskEnabled}");
+    }
   }
 
   runApp(VillaApp(initialRoute: initialRoute));
@@ -174,12 +184,45 @@ class VillaApp extends StatefulWidget {
   State<VillaApp> createState() => _VillaAppState();
 }
 
-class _VillaAppState extends State<VillaApp> {
+class _VillaAppState extends State<VillaApp> with WidgetsBindingObserver {
+  // 🆕 DODANO: WidgetsBindingObserver
+
+  @override
+  void initState() {
+    super.initState();
+    // 🆕 Slušaj app lifecycle promjene
+    WidgetsBinding.instance.addObserver(this);
+  }
+
   @override
   void dispose() {
-    // Cleanup connectivity service
+    // Cleanup
+    WidgetsBinding.instance.removeObserver(this);
     ConnectivityService.dispose();
+    KioskService.dispose(); // 🆕 DODANO
     super.dispose();
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // 🆕 APP LIFECYCLE HANDLING - Reaktiviraj kiosk kad se app vrati
+  // ════════════════════════════════════════════════════════════════════
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    debugPrint("📱 App lifecycle: $state");
+
+    if (state == AppLifecycleState.resumed) {
+      // App se vratio u foreground
+      if (KioskService.isKioskEnabled) {
+        debugPrint("🔒 Re-enabling kiosk mode on resume...");
+        KioskService.enableKioskMode();
+        KioskService.hideSystemBars();
+      }
+
+      // Također osiguraj immersive mode
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
   }
 
   @override

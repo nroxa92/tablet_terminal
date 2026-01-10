@@ -1,6 +1,6 @@
 // FILE: lib/data/services/connectivity_service.dart
 // OPIS: Praćenje internet konekcije i auto-sync
-// VERZIJA: 1.1 - FIX: Ispravan tip za ConnectivityResult
+// VERZIJA: 1.2 - FIX: Kompatibilno sa connectivity_plus koji vraća single ConnectivityResult
 // DATUM: 2026-01-10
 
 import 'dart:async';
@@ -11,7 +11,7 @@ import 'sentry_service.dart';
 
 class ConnectivityService {
   static final Connectivity _connectivity = Connectivity();
-  static StreamSubscription<List<ConnectivityResult>>? _subscription;
+  static StreamSubscription<ConnectivityResult>? _subscription;
 
   static bool _isOnline = true;
   static final _onlineController = StreamController<bool>.broadcast();
@@ -58,7 +58,6 @@ class ConnectivityService {
   static void dispose() {
     _subscription?.cancel();
     _subscription = null;
-    // Ne zatvaraj broadcast controller jer može biti ponovno korišten
     debugPrint('📡 Connectivity service disposed');
   }
 
@@ -66,7 +65,7 @@ class ConnectivityService {
   // HANDLERS
   // ============================================================
 
-  static void _handleConnectivityChange(List<ConnectivityResult> result) {
+  static void _handleConnectivityChange(ConnectivityResult result) {
     final wasOnline = _isOnline;
     _updateStatus(result);
 
@@ -90,12 +89,11 @@ class ConnectivityService {
     }
   }
 
-  static void _updateStatus(List<ConnectivityResult> result) {
+  static void _updateStatus(ConnectivityResult result) {
     final previousStatus = _isOnline;
 
-    // Provjeri je li bilo koji rezultat različit od 'none'
-    _isOnline =
-        result.isNotEmpty && !result.every((r) => r == ConnectivityResult.none);
+    // Provjeri je li rezultat različit od 'none'
+    _isOnline = result != ConnectivityResult.none;
 
     if (previousStatus != _isOnline) {
       _onlineController.add(_isOnline);
