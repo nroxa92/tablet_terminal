@@ -1,6 +1,7 @@
 // FILE: lib/ui/screens/chat_screen.dart
 // OPIS: Chat interface za AI agente.
-// VERZIJA: 2.0 - Quick Response za WiFi/Check-out, poboljšani UX
+// VERZIJA: 3.0 - FAZA 2: OfflineBanner + offline awareness
+// DATUM: 2026-01-10
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -13,9 +14,11 @@ import '../../data/models/place.dart';
 import '../../data/services/gemini_service.dart';
 import '../../data/services/places_service.dart';
 import '../../data/services/storage_service.dart';
+import '../../data/services/connectivity_service.dart';
 
 // Widgeti
 import '../widgets/place_card.dart';
+import '../widgets/offline_indicator.dart';
 import '../../utils/translations.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -118,6 +121,45 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty || _geminiService == null) return;
 
+    // ⭐ FAZA 2: Provjeri internet za AI pozive
+    if (!ConnectivityService.isOnline) {
+      // Offline - Quick responses rade, ali AI ne
+      final quickResponse = _geminiService!.getQuickResponse(text);
+
+      if (quickResponse != null) {
+        setState(() {
+          _chatContent.add(ChatMessage(
+            text: text,
+            isUser: true,
+            timestamp: DateTime.now(),
+          ));
+          _chatContent.add(ChatMessage(
+            text: quickResponse,
+            isUser: false,
+            timestamp: DateTime.now(),
+          ));
+        });
+        _controller.clear();
+        _scrollToBottom();
+        return;
+      }
+
+      // Nema quick response i offline
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.wifi_off, color: Colors.white),
+              SizedBox(width: 10),
+              Text("No internet. AI assistant unavailable."),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     // Dodaj korisnikovu poruku
     setState(() {
       _chatContent.add(ChatMessage(
@@ -191,6 +233,23 @@ class _ChatScreenState extends State<ChatScreen> {
   // GOOGLE PLACES PRETRAGA
   // ═══════════════════════════════════════════════════════════════════════
   Future<void> _searchPlaces() async {
+    // ⭐ FAZA 2: Provjeri internet za Places search
+    if (!ConnectivityService.isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.wifi_off, color: Colors.white),
+              SizedBox(width: 10),
+              Text("No internet. Cannot search places."),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     String queryCategory = "point_of_interest";
     String statusMsg = Translations.t('searching_nearby');
 
@@ -312,6 +371,9 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: _buildAppBar(),
       body: Column(
         children: [
+          // ⭐ FAZA 2: OFFLINE BANNER
+          const OfflineBanner(),
+
           // ═══════════════════════════════════════════════════════
           // QUICK ACTIONS (samo za Reception)
           // ═══════════════════════════════════════════════════════
@@ -462,12 +524,20 @@ class _ChatScreenState extends State<ChatScreen> {
                   fontSize: 18,
                 ),
               ),
-              Text(
-                "Online",
-                style: TextStyle(
-                  color: Colors.green[400],
-                  fontSize: 12,
-                ),
+              // ⭐ FAZA 2: Online/Offline status
+              StreamBuilder<bool>(
+                stream: ConnectivityService.onConnectivityChanged,
+                initialData: ConnectivityService.isOnline,
+                builder: (context, snapshot) {
+                  final isOnline = snapshot.data ?? true;
+                  return Text(
+                    isOnline ? "Online" : "Offline",
+                    style: TextStyle(
+                      color: isOnline ? Colors.green[400] : Colors.orange,
+                      fontSize: 12,
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -475,6 +545,10 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       centerTitle: false,
       elevation: 0,
+      actions: const [
+        // ⭐ FAZA 2: Mali offline indikator u AppBar
+        OfflineIndicatorSmall(),
+      ],
     );
   }
 
@@ -532,9 +606,8 @@ class _ChatScreenState extends State<ChatScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         constraints: const BoxConstraints(maxWidth: 600),
         decoration: BoxDecoration(
-          color: isUser
-              ? agentColor.withValues(alpha: 0.85)
-              : const Color(0xFF2A2A2A),
+          color:
+              isUser ? agentColor.withValues(alpha: 0.85) : const Color(0xFF2A2A2A),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(20),
             topRight: const Radius.circular(20),

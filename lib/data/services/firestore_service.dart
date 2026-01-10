@@ -1,16 +1,20 @@
 // FILE: lib/data/services/firestore_service.dart
 // OPIS: Sinkronizacija podataka s Firebase Firestore.
-// VERZIJA: 5.1 - FIX: Kompatibilno s postojećim StorageService
-// DATUM: 2026-01-09
+// VERZIJA: 6.0 - FAZA 2: Offline Queue Integration
+// DATUM: 2026-01-10
 //
 // ✅ STANDARD: SVE camelCase
-// ✅ KOMPATIBILNO: Koristi samo postojeće StorageService metode
+// ✅ OFFLINE: Queue operacije kad nema interneta
 
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'storage_service.dart';
 import 'signature_storage_service.dart';
+import 'connectivity_service.dart';
+import 'offline_queue_service.dart';
+import 'sentry_service.dart';
+import 'performance_service.dart';
 
 class FirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -21,6 +25,9 @@ class FirestoreService {
 
   /// Sinkronizira sve podatke potrebne za rad tableta
   static Future<void> syncAllData() async {
+    // Start performance trace
+    await PerformanceService.startSyncTrace();
+
     try {
       final unitId = StorageService.getUnitId();
       final ownerId = StorageService.getOwnerId();
@@ -30,6 +37,16 @@ class FirestoreService {
       }
 
       debugPrint("🔄 Starting full data sync...");
+      SentryService.addBreadcrumb(
+          message: 'Sync started', category: 'firebase');
+
+      // Provjeri online status
+      if (!ConnectivityService.isOnline) {
+        debugPrint("📴 Offline - using cached data");
+        SentryService.logFirebaseSync(success: false, collection: 'all');
+        await PerformanceService.stopSyncTrace(success: false);
+        return;
+      }
 
       // 1. Sync Unit Data (WiFi, Address, Name)
       await _syncUnitData(unitId);
@@ -41,8 +58,12 @@ class FirestoreService {
       await _syncCurrentBooking(unitId);
 
       debugPrint("✅ Full sync completed!");
+      SentryService.logFirebaseSync(success: true, collection: 'all');
+      await PerformanceService.stopSyncTrace(success: true);
     } catch (e) {
       debugPrint("❌ Sync error: $e");
+      SentryService.captureException(e, hint: 'Full sync failed');
+      await PerformanceService.stopSyncTrace(success: false);
       rethrow;
     }
   }
@@ -67,8 +88,8 @@ class FirestoreService {
       await StorageService.setVillaData(
         data['name'] ?? 'Villa Guest',
         data['address'] ?? '',
-        data['wifiSsid'] ?? '', // ✅ camelCase
-        data['wifiPass'] ?? '', // ✅ camelCase
+        data['wifiSsid'] ?? '',
+        data['wifiPass'] ?? '',
         data['contactPhone'] ?? '',
       );
 
@@ -160,7 +181,7 @@ class FirestoreService {
             data['googleReviewUrl'].toString());
       }
 
-      // ✅ cleanerChecklist (camelCase) - Web Panel koristi ovo ime!
+      // ✅ cleanerChecklist (camelCase)
       if (data['cleanerChecklist'] != null &&
           data['cleanerChecklist'] is List) {
         final tasks = List<String>.from(data['cleanerChecklist']);
@@ -185,11 +206,10 @@ class FirestoreService {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
 
-      // ✅ Query koristi camelCase
       final snapshot = await _db
           .collection('bookings')
-          .where('unitId', isEqualTo: unitId) // ✅ camelCase
-          .where('endDate', // ✅ camelCase
+          .where('unitId', isEqualTo: unitId)
+          .where('endDate',
               isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
           .orderBy('endDate')
           .limit(1)
@@ -204,7 +224,6 @@ class FirestoreService {
       final bookingDoc = snapshot.docs.first;
       final data = bookingDoc.data();
 
-      // ✅ Sva polja su camelCase
       final startDate = (data['startDate'] as Timestamp).toDate();
       final endDate = (data['endDate'] as Timestamp).toDate();
 
@@ -215,13 +234,13 @@ class FirestoreService {
       }
 
       await StorageService.setCurrentBooking(
-        guestName: data['guestName'] ?? '', // ✅ camelCase
+        guestName: data['guestName'] ?? '',
         startDate: startDate,
         endDate: endDate,
-        guestCount: data['guestCount'] ?? 1, // ✅ camelCase
+        guestCount: data['guestCount'] ?? 1,
         bookingId: bookingDoc.id,
-        guestEmail: data['guestEmail'], // ✅ camelCase
-        guestPhone: data['guestPhone'], // ✅ camelCase
+        guestEmail: data['guestEmail'],
+        guestPhone: data['guestPhone'],
         notes: data['note'],
       );
 
@@ -236,27 +255,32 @@ class FirestoreService {
   // GUEST DATA METHODS
   // ============================================================
 
-  /// Javna metoda za dohvat imena gosta
   static Future<String?> getTodaysGuestName() async {
     final unitId = StorageService.getUnitId();
     if (unitId == null) return null;
 
-    await _syncCurrentBooking(unitId);
+    if (ConnectivityService.isOnline) {
+      await _syncCurrentBooking(unitId);
+    }
+
     final name = StorageService.getGuestName();
     return name.isNotEmpty ? name : null;
   }
 
-  /// Dohvati broj gostiju za trenutnu rezervaciju
   static Future<int> getTodaysGuestCount() async {
     final unitId = StorageService.getUnitId();
     if (unitId == null) return 1;
 
+    // Ako smo offline, vrati cached vrijednost
+    if (!ConnectivityService.isOnline) {
+      return StorageService.getGuestCount();
+    }
+
     try {
       final now = DateTime.now();
-      // ✅ camelCase
       final snapshot = await _db
           .collection('bookings')
-          .where('unitId', isEqualTo: unitId) // ✅ camelCase
+          .where('unitId', isEqualTo: unitId)
           .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
           .orderBy('endDate')
           .limit(1)
@@ -264,23 +288,37 @@ class FirestoreService {
 
       if (snapshot.docs.isNotEmpty) {
         final data = snapshot.docs.first.data();
-        return data['guestCount'] ?? 1; // ✅ camelCase
+        return data['guestCount'] ?? 1;
       }
     } catch (e) {
       debugPrint("⚠️ Error fetching guest count: $e");
     }
-    return 1;
+    return StorageService.getGuestCount();
   }
 
   // ============================================================
-  // ⭐ GUESTS SUBCOLLECTION
+  // ⭐ GUESTS SUBCOLLECTION - OFFLINE AWARE
   // ============================================================
 
-  /// Sprema gosta u subcollection bookings/{bookingId}/guests/{guestId}
+  /// Sprema gosta u subcollection - s offline fallback
   static Future<String> saveGuestToSubcollection({
     required String bookingId,
     required Map<String, dynamic> guestData,
   }) async {
+    // Ako smo offline, queue operaciju
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Queuing guest save...');
+      await OfflineQueueService.queueCreateGuest(
+        bookingId: bookingId,
+        guestData: guestData,
+      );
+      SentryService.addBreadcrumb(
+        message: 'Guest queued for offline sync',
+        category: 'offline',
+      );
+      return 'queued_${DateTime.now().millisecondsSinceEpoch}';
+    }
+
     try {
       final docRef = await _db
           .collection('bookings')
@@ -288,22 +326,39 @@ class FirestoreService {
           .collection('guests')
           .add({
         ...guestData,
-        'createdAt': FieldValue.serverTimestamp(), // ✅ camelCase
+        'createdAt': FieldValue.serverTimestamp(),
       });
 
       debugPrint('✅ Guest saved to subcollection: ${docRef.id}');
       return docRef.id;
     } catch (e) {
-      debugPrint('❌ Save guest error: $e');
-      rethrow;
+      debugPrint('❌ Save guest error (queuing): $e');
+      // Fallback na queue
+      await OfflineQueueService.queueCreateGuest(
+        bookingId: bookingId,
+        guestData: guestData,
+      );
+      return 'queued_${DateTime.now().millisecondsSinceEpoch}';
     }
   }
 
-  /// Sprema sve goste u subcollection (batch)
+  /// Sprema sve goste u subcollection (batch) - s offline fallback
   static Future<void> saveAllGuestsToSubcollection({
     required String bookingId,
     required List<Map<String, dynamic>> guests,
   }) async {
+    // Ako smo offline, queue sve operacije
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Queuing ${guests.length} guests...');
+      for (final guestData in guests) {
+        await OfflineQueueService.queueCreateGuest(
+          bookingId: bookingId,
+          guestData: guestData,
+        );
+      }
+      return;
+    }
+
     try {
       final batch = _db.batch();
       final guestsRef =
@@ -313,27 +368,37 @@ class FirestoreService {
         final docRef = guestsRef.doc();
         batch.set(docRef, {
           ...guestData,
-          'createdAt': FieldValue.serverTimestamp(), // ✅ camelCase
+          'createdAt': FieldValue.serverTimestamp(),
         });
       }
 
-      // ✅ Update booking s camelCase poljima
       batch.update(_db.collection('bookings').doc(bookingId), {
-        'isScanned': true, // ✅ camelCase
-        'scannedAt': FieldValue.serverTimestamp(), // ✅ camelCase
-        'scannedGuestCount': guests.length, // ✅ camelCase
+        'isScanned': true,
+        'scannedAt': FieldValue.serverTimestamp(),
+        'scannedGuestCount': guests.length,
       });
 
       await batch.commit();
       debugPrint('✅ ${guests.length} guests saved to subcollection');
     } catch (e) {
-      debugPrint('❌ Batch save guests error: $e');
-      rethrow;
+      debugPrint('❌ Batch save guests error (queuing): $e');
+      // Fallback na queue
+      for (final guestData in guests) {
+        await OfflineQueueService.queueCreateGuest(
+          bookingId: bookingId,
+          guestData: guestData,
+        );
+      }
     }
   }
 
   /// Briše sve goste iz subcollection
   static Future<int> deleteGuestsFromSubcollection(String bookingId) async {
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Cannot delete guests');
+      return 0;
+    }
+
     try {
       final guestsSnapshot = await _db
           .collection('bookings')
@@ -359,11 +424,157 @@ class FirestoreService {
   }
 
   // ============================================================
-  // ⭐ BOOKING ARCHIVE
+  // FEEDBACK - OFFLINE AWARE
   // ============================================================
 
-  /// Arhivira booking nakon check-outa
+  static Future<void> saveFeedback({
+    required int rating,
+    String? comment,
+  }) async {
+    final unitId = StorageService.getUnitId();
+    final ownerId = StorageService.getOwnerId();
+
+    if (unitId == null) throw "No Unit ID";
+
+    // Ako smo offline, queue
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Queuing feedback...');
+      await OfflineQueueService.queueSaveFeedback(
+        rating: rating,
+        comment: comment,
+      );
+      return;
+    }
+
+    try {
+      await _db.collection('feedback').add({
+        'ownerId': ownerId,
+        'unitId': unitId,
+        'rating': rating,
+        'comment': comment ?? '',
+        'timestamp': FieldValue.serverTimestamp(),
+        'guestName': StorageService.getGuestName(),
+        'language': StorageService.getLanguage(),
+        'isRead': false,
+        'platform': 'Android Kiosk',
+      });
+
+      debugPrint("⭐ Feedback saved: $rating stars");
+    } catch (e) {
+      debugPrint("❌ Error saving feedback (queuing): $e");
+      await OfflineQueueService.queueSaveFeedback(
+        rating: rating,
+        comment: comment,
+      );
+    }
+  }
+
+  // ============================================================
+  // AI CHAT LOGS - OFFLINE AWARE
+  // ============================================================
+
+  static Future<void> logAIConversation({
+    required String agentId,
+    required String userMessage,
+    required String aiResponse,
+  }) async {
+    final unitId = StorageService.getUnitId();
+    final ownerId = StorageService.getOwnerId();
+
+    if (unitId == null) return;
+
+    // Ako smo offline, queue
+    if (!ConnectivityService.isOnline) {
+      await OfflineQueueService.queueSaveAiLog(
+        agentId: agentId,
+        userMessage: userMessage,
+        aiResponse: aiResponse,
+      );
+      return;
+    }
+
+    try {
+      await _db.collection('ai_logs').add({
+        'ownerId': ownerId,
+        'unitId': unitId,
+        'agentId': agentId,
+        'userMessage': userMessage,
+        'aiResponse': aiResponse,
+        'timestamp': FieldValue.serverTimestamp(),
+        'language': StorageService.getLanguage(),
+      });
+    } catch (e) {
+      debugPrint("⚠️ AI log failed (queuing): $e");
+      await OfflineQueueService.queueSaveAiLog(
+        agentId: agentId,
+        userMessage: userMessage,
+        aiResponse: aiResponse,
+      );
+    }
+  }
+
+  // ============================================================
+  // CLEANING LOGS - OFFLINE AWARE
+  // ============================================================
+
+  static Future<void> saveCleaningLog({
+    required Map<String, bool> tasks,
+    required String notes,
+    String? bookingId,
+  }) async {
+    final unitId = StorageService.getUnitId();
+    final ownerId = StorageService.getOwnerId();
+
+    if (unitId == null) throw "No Unit ID";
+
+    // Ako smo offline, queue
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Queuing cleaning log...');
+      await OfflineQueueService.queueSaveCleaningLog(
+        tasks: tasks,
+        notes: notes,
+        bookingId: bookingId,
+      );
+      return;
+    }
+
+    try {
+      final completedCount = tasks.values.where((v) => v).length;
+
+      await _db.collection('cleaning_logs').add({
+        'ownerId': ownerId,
+        'unitId': unitId,
+        'bookingId': bookingId,
+        'timestamp': FieldValue.serverTimestamp(),
+        'tasks': tasks,
+        'completedCount': completedCount,
+        'totalCount': tasks.length,
+        'notes': notes,
+        'status': completedCount == tasks.length ? 'completed' : 'partial',
+        'platform': 'Android Kiosk',
+      });
+
+      debugPrint("🧹 Cleaning log saved");
+    } catch (e) {
+      debugPrint("❌ Error saving cleaning log (queuing): $e");
+      await OfflineQueueService.queueSaveCleaningLog(
+        tasks: tasks,
+        notes: notes,
+        bookingId: bookingId,
+      );
+    }
+  }
+
+  // ============================================================
+  // BOOKING ARCHIVE
+  // ============================================================
+
   static Future<void> archiveBooking(String bookingId) async {
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Cannot archive booking');
+      return;
+    }
+
     try {
       debugPrint('📦 Archiving booking: $bookingId');
 
@@ -384,11 +595,10 @@ class FirestoreService {
 
       final guests = guestsSnapshot.docs.map((doc) => doc.data()).toList();
 
-      // ✅ Sva polja camelCase
       final archivedData = {
         ...bookingData,
-        'originalBookingId': bookingId, // ✅ camelCase
-        'archivedAt': FieldValue.serverTimestamp(), // ✅ camelCase
+        'originalBookingId': bookingId,
+        'archivedAt': FieldValue.serverTimestamp(),
         'guests': guests,
         'status': 'archived',
       };
@@ -399,7 +609,7 @@ class FirestoreService {
 
       await _db.collection('bookings').doc(bookingId).update({
         'status': 'archived',
-        'archivedAt': FieldValue.serverTimestamp(), // ✅ camelCase
+        'archivedAt': FieldValue.serverTimestamp(),
       });
 
       debugPrint('✅ Booking archived successfully');
@@ -410,7 +620,7 @@ class FirestoreService {
   }
 
   // ============================================================
-  // ⭐ CLEANER FINISH - COMPLETE CLEANUP
+  // CLEANER FINISH - COMPLETE CLEANUP
   // ============================================================
 
   static Future<Map<String, int>> performCheckoutCleanup(
@@ -422,6 +632,11 @@ class FirestoreService {
       'guests_deleted': 0,
       'booking_archived': 0,
     };
+
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Cleanup will run when online');
+      return results;
+    }
 
     try {
       results['signatures_deleted'] =
@@ -442,10 +657,9 @@ class FirestoreService {
   }
 
   // ============================================================
-  // CHECK-IN / GUESTS (LEGACY - za kompatibilnost)
+  // CHECK-IN / GUESTS (LEGACY)
   // ============================================================
 
-  /// Sprema podatke o gostu (OCR scan) - LEGACY metoda
   static Future<void> saveCheckIn(
     String docType,
     Map<String, String> guestData,
@@ -455,32 +669,37 @@ class FirestoreService {
 
     if (unitId == null) throw "Tablet not registered (No Unit ID)";
 
-    try {
-      // ✅ SVA polja camelCase
-      final checkInData = {
-        'ownerId': ownerId, // ✅ camelCase
-        'unitId': unitId, // ✅ camelCase
-        'timestamp': FieldValue.serverTimestamp(),
-        'docType': docType, // ✅ camelCase
-        'guestData': guestData, // ✅ camelCase
-        'status': 'pending_review',
-        'platform': 'Android Kiosk',
-        'language': StorageService.getLanguage(),
-      };
+    final checkInData = {
+      'ownerId': ownerId,
+      'unitId': unitId,
+      'timestamp': FieldValue.serverTimestamp(),
+      'docType': docType,
+      'guestData': guestData,
+      'status': 'pending_review',
+      'platform': 'Android Kiosk',
+      'language': StorageService.getLanguage(),
+    };
 
-      await _db.collection('check_ins').add(checkInData);
-
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Queuing check-in...');
+      // Spremi lokalno
       await StorageService.addScannedGuest(guestData);
+      return;
+    }
 
+    try {
+      await _db.collection('check_ins').add(checkInData);
+      await StorageService.addScannedGuest(guestData);
       debugPrint("✅ Check-in saved successfully");
     } catch (e) {
       debugPrint("❌ Error saving check-in: $e");
+      await StorageService.addScannedGuest(guestData);
       rethrow;
     }
   }
 
   // ============================================================
-  // POTPIS KUĆNOG REDA (LEGACY - za kompatibilnost)
+  // POTPIS KUĆNOG REDA (LEGACY)
   // ============================================================
 
   static Future<void> saveHouseRulesSignature(Uint8List signatureBytes) async {
@@ -492,18 +711,22 @@ class FirestoreService {
     try {
       final String base64Image = base64Encode(signatureBytes);
 
-      // ✅ SVA polja camelCase
       final Map<String, dynamic> signatureData = {
-        'ownerId': ownerId, // ✅ camelCase
-        'unitId': unitId, // ✅ camelCase
+        'ownerId': ownerId,
+        'unitId': unitId,
         'timestamp': FieldValue.serverTimestamp(),
         'type': 'house_rules_consent',
-        'signatureImage': base64Image, // ✅ camelCase
+        'signatureImage': base64Image,
         'status': 'signed',
         'platform': 'Android Kiosk',
         'language': StorageService.getLanguage(),
-        'guestName': StorageService.getGuestName(), // ✅ camelCase
+        'guestName': StorageService.getGuestName(),
       };
+
+      if (!ConnectivityService.isOnline) {
+        debugPrint('📴 Offline: Cannot save signature (base64)');
+        return;
+      }
 
       await _db.collection('signatures').add(signatureData);
       debugPrint("✅ Signature saved for Unit: $unitId");
@@ -514,124 +737,24 @@ class FirestoreService {
   }
 
   // ============================================================
-  // FEEDBACK
-  // ============================================================
-
-  static Future<void> saveFeedback({
-    required int rating,
-    String? comment,
-  }) async {
-    final unitId = StorageService.getUnitId();
-    final ownerId = StorageService.getOwnerId();
-
-    if (unitId == null) throw "No Unit ID";
-
-    try {
-      // ✅ SVA polja camelCase
-      await _db.collection('feedback').add({
-        'ownerId': ownerId, // ✅ camelCase
-        'unitId': unitId, // ✅ camelCase
-        'rating': rating,
-        'comment': comment ?? '',
-        'timestamp': FieldValue.serverTimestamp(),
-        'guestName': StorageService.getGuestName(), // ✅ camelCase
-        'language': StorageService.getLanguage(),
-        'isRead': false, // ✅ camelCase
-        'platform': 'Android Kiosk',
-      });
-
-      debugPrint("⭐ Feedback saved: $rating stars");
-    } catch (e) {
-      debugPrint("❌ Error saving feedback: $e");
-      rethrow;
-    }
-  }
-
-  // ============================================================
-  // AI CHAT LOGS
-  // ============================================================
-
-  static Future<void> logAIConversation({
-    required String agentId,
-    required String userMessage,
-    required String aiResponse,
-  }) async {
-    final unitId = StorageService.getUnitId();
-    final ownerId = StorageService.getOwnerId();
-
-    if (unitId == null) return;
-
-    try {
-      // ✅ SVA polja camelCase
-      await _db.collection('ai_logs').add({
-        'ownerId': ownerId, // ✅ camelCase
-        'unitId': unitId, // ✅ camelCase
-        'agentId': agentId, // ✅ camelCase
-        'userMessage': userMessage, // ✅ camelCase
-        'aiResponse': aiResponse, // ✅ camelCase
-        'timestamp': FieldValue.serverTimestamp(),
-        'language': StorageService.getLanguage(),
-      });
-    } catch (e) {
-      debugPrint("⚠️ AI log failed: $e");
-    }
-  }
-
-  // ============================================================
-  // CLEANING LOGS
-  // ============================================================
-
-  static Future<void> saveCleaningLog({
-    required Map<String, bool> tasks,
-    required String notes,
-    String? bookingId,
-  }) async {
-    final unitId = StorageService.getUnitId();
-    final ownerId = StorageService.getOwnerId();
-
-    if (unitId == null) throw "No Unit ID";
-
-    try {
-      final completedCount = tasks.values.where((v) => v).length;
-
-      // ✅ SVA polja camelCase
-      await _db.collection('cleaning_logs').add({
-        'ownerId': ownerId, // ✅ camelCase
-        'unitId': unitId, // ✅ camelCase
-        'bookingId': bookingId, // ✅ camelCase
-        'timestamp': FieldValue.serverTimestamp(),
-        'tasks': tasks,
-        'completedCount': completedCount, // ✅ camelCase
-        'totalCount': tasks.length, // ✅ camelCase
-        'notes': notes,
-        'status': completedCount == tasks.length ? 'completed' : 'partial',
-        'platform': 'Android Kiosk',
-      });
-
-      debugPrint("🧹 Cleaning log saved");
-    } catch (e) {
-      debugPrint("❌ Error saving cleaning log: $e");
-      rethrow;
-    }
-  }
-
-  // ============================================================
   // GALLERY / SCREENSAVER IMAGES
   // ============================================================
 
-  /// Dohvaća slike za screensaver
-  /// ✅ Zadržano ime getGalleryImages za kompatibilnost s screensaver_screen.dart
   static Future<List<String>> getGalleryImages() async {
     try {
       final ownerId = StorageService.getOwnerId();
 
       if (ownerId == null) return [];
 
-      // ✅ Prvo probaj novu kolekciju screensaver_images
+      if (!ConnectivityService.isOnline) {
+        debugPrint('📴 Offline: Cannot fetch gallery');
+        return [];
+      }
+
       var snapshot = await _db
           .collection('screensaver_images')
-          .where('ownerId', isEqualTo: ownerId) // ✅ camelCase
-          .orderBy('uploadedAt', descending: true) // ✅ camelCase
+          .where('ownerId', isEqualTo: ownerId)
+          .orderBy('uploadedAt', descending: true)
           .get();
 
       if (snapshot.docs.isNotEmpty) {
@@ -664,15 +787,21 @@ class FirestoreService {
   // ============================================================
 
   static Future<String?> getCurrentBookingId() async {
+    // Prvo provjeri cache
+    final cachedId = StorageService.getBookingId();
+
+    if (!ConnectivityService.isOnline) {
+      return cachedId;
+    }
+
     final unitId = StorageService.getUnitId();
-    if (unitId == null) return null;
+    if (unitId == null) return cachedId;
 
     try {
       final now = DateTime.now();
-      // ✅ camelCase
       final snapshot = await _db
           .collection('bookings')
-          .where('unitId', isEqualTo: unitId) // ✅ camelCase
+          .where('unitId', isEqualTo: unitId)
           .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
           .where('status', isNotEqualTo: 'archived')
           .orderBy('status')
@@ -686,6 +815,6 @@ class FirestoreService {
     } catch (e) {
       debugPrint("⚠️ Get booking ID error: $e");
     }
-    return null;
+    return cachedId;
   }
 }

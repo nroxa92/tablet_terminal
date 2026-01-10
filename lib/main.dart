@@ -1,6 +1,6 @@
 // FILE: lib/main.dart
 // OPIS: Entry point. Učitava servise, Firebase i provjerava auth session.
-// VERZIJA: 3.0 - FAZA 1: Sentry + Performance Monitoring
+// VERZIJA: 4.0 - FAZA 2: Offline Queue + Connectivity
 // DATUM: 2026-01-10
 
 import 'package:flutter/material.dart';
@@ -14,6 +14,8 @@ import 'data/services/storage_service.dart';
 import 'data/services/tablet_auth_service.dart';
 import 'data/services/sentry_service.dart';
 import 'data/services/performance_service.dart';
+import 'data/services/connectivity_service.dart';
+import 'data/services/offline_queue_service.dart';
 import 'utils/inactivity_wrapper.dart';
 
 // EKRANI
@@ -56,18 +58,23 @@ Future<void> _initializeApp() async {
   await Hive.initFlutter();
   await StorageService.init();
 
-  // 4. FIREBASE
+  // 4. OFFLINE QUEUE INIT
+  await OfflineQueueService.init();
+  debugPrint(
+      "📦 Offline queue ready. Pending: ${OfflineQueueService.pendingCount}");
+
+  // 5. FIREBASE
   bool firebaseReady = false;
   try {
     await Firebase.initializeApp();
     debugPrint("✅ FIREBASE CONNECTED");
     firebaseReady = true;
 
-    // 5. FIREBASE PERFORMANCE
+    // 6. FIREBASE PERFORMANCE
     await PerformanceService.setEnabled(true);
     debugPrint("✅ PERFORMANCE MONITORING ENABLED");
 
-    // 6. UČITAJ API KLJUČEVE IZ BAZE
+    // 7. UČITAJ API KLJUČEVE IZ BAZE
     await AppConstants.loadFromFirebase();
   } catch (e, stackTrace) {
     debugPrint("❌ FIREBASE/CONFIG ERROR: $e");
@@ -75,13 +82,26 @@ Future<void> _initializeApp() async {
         stackTrace: stackTrace, hint: 'Firebase init failed');
   }
 
-  // 7. PROVJERI POSTOJEĆI AUTH SESSION
+  // 8. CONNECTIVITY SERVICE
+  await ConnectivityService.init();
+  debugPrint(
+      "📡 Connectivity service ready. Online: ${ConnectivityService.isOnline}");
+
+  // 9. PROCESS PENDING QUEUE (ako smo online)
+  if (ConnectivityService.isOnline &&
+      OfflineQueueService.hasPendingOperations) {
+    debugPrint("🔄 Processing pending offline operations...");
+    final processed = await OfflineQueueService.processQueue();
+    debugPrint("✅ Processed $processed pending operations");
+  }
+
+  // 10. PROVJERI POSTOJEĆI AUTH SESSION
   String initialRoute = '/setup';
 
   if (firebaseReady) {
     initialRoute = await _determineInitialRoute();
 
-    // 8. POSTAVI SENTRY KONTEKST
+    // 11. POSTAVI SENTRY KONTEKST
     await SentryService.setDeviceContext();
   }
 
@@ -142,7 +162,7 @@ Future<String> _determineInitialRoute() async {
   }
 }
 
-class VillaApp extends StatelessWidget {
+class VillaApp extends StatefulWidget {
   final String initialRoute;
 
   const VillaApp({super.key, required this.initialRoute});
@@ -151,12 +171,24 @@ class VillaApp extends StatelessWidget {
       GlobalKey<NavigatorState>();
 
   @override
+  State<VillaApp> createState() => _VillaAppState();
+}
+
+class _VillaAppState extends State<VillaApp> {
+  @override
+  void dispose() {
+    // Cleanup connectivity service
+    ConnectivityService.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Vesta Lumina',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      navigatorKey: navigatorKey,
+      navigatorKey: VillaApp.navigatorKey,
 
       // NAVIGATION OBSERVER - logira navigaciju u Sentry
       navigatorObservers: [
@@ -171,7 +203,7 @@ class VillaApp extends StatelessWidget {
         );
       },
 
-      initialRoute: initialRoute,
+      initialRoute: widget.initialRoute,
 
       routes: {
         '/': (context) => const WelcomeScreen(),

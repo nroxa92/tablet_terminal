@@ -1,9 +1,16 @@
 # FILE: pubspec.yaml
-# VERZIJA: 2.0 - FAZA 1: Sentry, Performance, Security
+# VERZIJA: 3.0 - FAZA 1 + FAZA 2: Complete Production Ready
+# DATUM: 2026-01-10
+#
+# ═══════════════════════════════════════════════════════════
+# VESTA LUMINA CLIENT TERMINAL
+# Premium Guest Experience System for Vacation Rentals
+# ═══════════════════════════════════════════════════════════
+
 name: villa_ai_terminal
 description: Vesta Lumina Client Terminal - Premium Guest Experience System.
 publish_to: 'none'
-version: 2.0.0+1
+version: 3.0.0+1
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -12,7 +19,9 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # --- UI & DIZAJN ---
+  # ═══════════════════════════════════════════════════════════
+  # UI & DIZAJN
+  # ═══════════════════════════════════════════════════════════
   google_fonts: ^6.1.0
   flutter_markdown: ^0.7.0
   cupertino_icons: ^1.0.6
@@ -23,36 +32,58 @@ dependencies:
   url_launcher: ^6.2.5
   signature: ^5.5.0
 
-  # --- LOGIKA & STANJE ---
+  # ═══════════════════════════════════════════════════════════
+  # LOGIKA & STATE MANAGEMENT
+  # ═══════════════════════════════════════════════════════════
   provider: ^6.1.1       
   uuid: ^4.3.3
   image: ^4.1.3
 
-  # --- AI MOZAK ---
+  # ═══════════════════════════════════════════════════════════
+  # AI MOZAK (Gemini)
+  # ═══════════════════════════════════════════════════════════
   google_generative_ai: ^0.4.0
 
-  # --- PODACI & MREŽA ---
-  hive: ^2.2.3
-  hive_flutter: ^1.1.0
-  shared_preferences: ^2.2.2
-  http: ^1.2.0
-  cloud_functions: ^4.6.0
-  path_provider: ^2.1.2
-  connectivity_plus: ^5.0.2        # FAZA 1: Za offline detection
+  # ═══════════════════════════════════════════════════════════
+  # LOKALNA POHRANA & MREŽA
+  # ═══════════════════════════════════════════════════════════
+  hive: ^2.2.3                    # Lokalna NoSQL baza
+  hive_flutter: ^1.1.0            # Flutter integracija za Hive
+  shared_preferences: ^2.2.2      # Key-value storage
+  http: ^1.2.0                    # HTTP client
+  path_provider: ^2.1.2           # File paths (FAZA 2: signature buffer)
 
-  # --- HARDVER & OCR & FIREBASE ---
-  camera: ^0.10.5
-  permission_handler: ^11.3.0
-  google_mlkit_text_recognition: ^0.13.0 
-  firebase_core: ^2.27.0
-  firebase_auth: ^4.17.8
-  cloud_firestore: ^4.15.8
-  firebase_storage: ^11.6.9
-  firebase_performance: ^0.9.3+17  # FAZA 1: Performance Monitoring
-  flutter_launcher_icons: ^0.13.1  
+  # ═══════════════════════════════════════════════════════════
+  # FIREBASE CORE
+  # ═══════════════════════════════════════════════════════════
+  firebase_core: ^2.27.0          # Firebase inicijalizacija
+  firebase_auth: ^4.17.8          # Autentifikacija tableta
+  cloud_firestore: ^4.15.8        # Firestore baza
+  firebase_storage: ^11.6.9       # Storage za potpise
+  cloud_functions: ^4.6.0         # Cloud Functions
 
-  # --- FAZA 1: ERROR TRACKING ---
-  sentry_flutter: ^7.18.0
+  # ═══════════════════════════════════════════════════════════
+  # HARDVER & OCR
+  # ═══════════════════════════════════════════════════════════
+  camera: ^0.10.5                 # Kamera za OCR
+  permission_handler: ^11.3.0     # Runtime permissions
+  google_mlkit_text_recognition: ^0.13.0  # MRZ OCR
+
+  # ═══════════════════════════════════════════════════════════
+  # FAZA 1: MONITORING & SECURITY
+  # ═══════════════════════════════════════════════════════════
+  sentry_flutter: ^7.18.0         # Error tracking & crash reports
+  firebase_performance: ^0.9.3+17 # Performance monitoring
+
+  # ═══════════════════════════════════════════════════════════
+  # FAZA 2: OFFLINE RESILIENCE
+  # ═══════════════════════════════════════════════════════════
+  connectivity_plus: ^5.0.2       # Network status monitoring
+
+  # ═══════════════════════════════════════════════════════════
+  # BUILD TOOLS
+  # ═══════════════════════════════════════════════════════════
+  flutter_launcher_icons: ^0.13.1 # App icon generator
 
 dev_dependencies:
   flutter_test:
@@ -64,7 +95,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   
-  # ASSETS - ako imaš slike/fontove
+  # ASSETS - odkomentiraj ako koristiš
   # assets:
   #   - assets/images/
   #   - assets/icons/

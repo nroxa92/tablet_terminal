@@ -1,6 +1,7 @@
 // FILE: lib/ui/screens/dashboard_screen.dart
 // OPIS: Glavni dashboard za goste s AI agentima.
-// VERZIJA: 2.0 - Koristi syncAllData() i nove StorageService metode
+// VERZIJA: 3.0 - Dodana FAZA 2: OfflineBanner
+// DATUM: 2026-01-10
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -13,6 +14,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../data/services/storage_service.dart';
 import '../../data/services/firestore_service.dart';
 import '../../data/services/weather_service.dart';
+
+// Widgets
+import '../widgets/offline_indicator.dart';
 
 // Utils
 import '../../utils/translations.dart';
@@ -306,352 +310,368 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      body: Stack(
+      body: Column(
         children: [
-          // Pozadina
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF1E1E1E), Color(0xFF000000)],
-                ),
-              ),
-            ),
-          ),
+          // ⭐ FAZA 2: OFFLINE BANNER
+          const OfflineBanner(),
 
-          SafeArea(
-            child: Row(
+          // GLAVNI SADRŽAJ
+          Expanded(
+            child: Stack(
               children: [
-                // ═══════════════════════════════════════════════════════
-                // LIJEVI PANEL (Info, Sat, QR, Gumbi)
-                // ═══════════════════════════════════════════════════════
-                Expanded(
-                  flex: 35,
+                // Pozadina
+                Positioned.fill(
                   child: Container(
-                    padding: const EdgeInsets.all(30),
                     decoration: const BoxDecoration(
-                      border: Border(right: BorderSide(color: Colors.white10)),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF1E1E1E), Color(0xFF000000)],
+                      ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Welcome message
-                        FadeInDown(
+                  ),
+                ),
+
+                SafeArea(
+                  child: Row(
+                    children: [
+                      // ═══════════════════════════════════════════════════════
+                      // LIJEVI PANEL (Info, Sat, QR, Gumbi)
+                      // ═══════════════════════════════════════════════════════
+                      Expanded(
+                        flex: 35,
+                        child: Container(
+                          padding: const EdgeInsets.all(30),
+                          decoration: const BoxDecoration(
+                            border: Border(
+                                right: BorderSide(color: Colors.white10)),
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                _guestName.isNotEmpty
-                                    ? "Welcome,"
-                                    : "Welcome to",
-                                style: const TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 20,
-                                ),
-                              ),
-                              Text(
-                                _guestName.isNotEmpty ? _guestName : _villaName,
-                                style: const TextStyle(
-                                  color: Color(0xFFD4AF37),
-                                  fontSize: 34,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1.2,
-                                  height: 1.2,
-                                ),
-                              ),
-                              if (_guestCount > 1)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 5),
-                                  child: Text(
-                                    "$_guestCount guests",
-                                    style: TextStyle(
-                                      color: Colors.grey[500],
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 25),
-
-                        // Sat i Datum
-                        StreamBuilder<DateTime>(
-                          stream: _timeStream,
-                          builder: (context, snapshot) {
-                            final now = snapshot.data ?? DateTime.now();
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  DateFormat('HH:mm').format(now),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 56,
-                                    fontWeight: FontWeight.w200,
-                                    height: 1.0,
-                                  ),
-                                ),
-                                Text(
-                                  DateFormat('EEEE, d. MMMM').format(now),
-                                  style: const TextStyle(
-                                    color: Colors.white54,
-                                    fontSize: 16,
-                                    letterSpacing: 2,
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-
-                        const SizedBox(height: 30),
-
-                        // Weather widget
-                        _buildWeatherWidget(),
-
-                        const Spacer(),
-
-                        // Check-out datum (ako postoji)
-                        if (_checkOutDate != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            margin: const EdgeInsets.only(bottom: 15),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: Colors.orange.withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.event,
-                                  color: Colors.orange,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  "Check-out: ${DateFormat('dd.MM').format(_checkOutDate!)}",
-                                  style: const TextStyle(
-                                    color: Colors.orange,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                        // Check-in status badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.green.withValues(alpha: 0.5),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.check_circle,
-                                color: Colors.green,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                Translations.t('check_in_complete'),
-                                style: const TextStyle(
-                                  color: Colors.green,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // WiFi QR i Info
-                        Container(
-                          padding: const EdgeInsets.all(15),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          child: Row(
-                            children: [
-                              // QR Code
-                              Container(
-                                color: Colors.white,
-                                padding: const EdgeInsets.all(2),
-                                child: QrImageView(
-                                  data:
-                                      "WIFI:T:WPA;S:$_wifiSSID;P:$_wifiPass;;",
-                                  version: QrVersions.auto,
-                                  size: 60.0,
-                                  backgroundColor: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(width: 15),
-                              // WiFi info
-                              Expanded(
+                              // Welcome message
+                              FadeInDown(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.wifi,
-                                          color: Color(0xFFD4AF37),
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            _wifiSSID,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 15,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
+                                    Text(
+                                      _guestName.isNotEmpty
+                                          ? "Welcome,"
+                                          : "Welcome to",
+                                      style: const TextStyle(
+                                        color: Colors.white54,
+                                        fontSize: 20,
+                                      ),
+                                    ),
+                                    Text(
+                                      _guestName.isNotEmpty
+                                          ? _guestName
+                                          : _villaName,
+                                      style: const TextStyle(
+                                        color: Color(0xFFD4AF37),
+                                        fontSize: 34,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.2,
+                                        height: 1.2,
+                                      ),
+                                    ),
+                                    if (_guestCount > 1)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 5),
+                                        child: Text(
+                                          "$_guestCount guests",
+                                          style: TextStyle(
+                                            color: Colors.grey[500],
+                                            fontSize: 14,
                                           ),
                                         ),
-                                      ],
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 25),
+
+                              // Sat i Datum
+                              StreamBuilder<DateTime>(
+                                stream: _timeStream,
+                                builder: (context, snapshot) {
+                                  final now = snapshot.data ?? DateTime.now();
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        DateFormat('HH:mm').format(now),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 56,
+                                          fontWeight: FontWeight.w200,
+                                          height: 1.0,
+                                        ),
+                                      ),
+                                      Text(
+                                        DateFormat('EEEE, d. MMMM').format(now),
+                                        style: const TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 16,
+                                          letterSpacing: 2,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+
+                              const SizedBox(height: 30),
+
+                              // Weather widget
+                              _buildWeatherWidget(),
+
+                              const Spacer(),
+
+                              // Check-out datum (ako postoji)
+                              if (_checkOutDate != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  margin: const EdgeInsets.only(bottom: 15),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: Colors.orange.withValues(alpha: 0.3),
                                     ),
-                                    const SizedBox(height: 4),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.event,
+                                        color: Colors.orange,
+                                        size: 16,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        "Check-out: ${DateFormat('dd.MM').format(_checkOutDate!)}",
+                                        style: const TextStyle(
+                                          color: Colors.orange,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                              // Check-in status badge
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: Colors.green.withValues(alpha: 0.5),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.check_circle,
+                                      color: Colors.green,
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 8),
                                     Text(
-                                      "Pass: $_wifiPass",
+                                      Translations.t('check_in_complete'),
                                       style: const TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 13,
+                                        color: Colors.green,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
+                              const SizedBox(height: 20),
+
+                              // WiFi QR i Info
+                              Container(
+                                padding: const EdgeInsets.all(15),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.05),
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                                child: Row(
+                                  children: [
+                                    // QR Code
+                                    Container(
+                                      color: Colors.white,
+                                      padding: const EdgeInsets.all(2),
+                                      child: QrImageView(
+                                        data:
+                                            "WIFI:T:WPA;S:$_wifiSSID;P:$_wifiPass;;",
+                                        version: QrVersions.auto,
+                                        size: 60.0,
+                                        backgroundColor: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 15),
+                                    // WiFi info
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.wifi,
+                                                color: Color(0xFFD4AF37),
+                                                size: 16,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Expanded(
+                                                child: Text(
+                                                  _wifiSSID,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 15,
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            "Pass: $_wifiPass",
+                                            style: const TextStyle(
+                                              color: Colors.grey,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+
+                              // Check-out button
+                              SizedBox(
+                                width: double.infinity,
+                                child: TextButton.icon(
+                                  onPressed: _handleCheckOut,
+                                  icon: const Icon(
+                                    Icons.logout,
+                                    color: Colors.redAccent,
+                                  ),
+                                  label: Text(
+                                    Translations.t('check_out'),
+                                    style: const TextStyle(
+                                      color: Colors.redAccent,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+
+                              // Help button
+                              Center(
+                                child: TextButton(
+                                  onPressed: _showHelpDialog,
+                                  child: const Text(
+                                    "Need Help?",
+                                    style: TextStyle(
+                                        color: Colors.grey, fontSize: 12),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 20),
+                      ),
 
-                        // Check-out button
-                        SizedBox(
-                          width: double.infinity,
-                          child: TextButton.icon(
-                            onPressed: _handleCheckOut,
-                            icon: const Icon(
-                              Icons.logout,
-                              color: Colors.redAccent,
-                            ),
-                            label: Text(
-                              Translations.t('check_out'),
-                              style: const TextStyle(
-                                color: Colors.redAccent,
-                                fontSize: 16,
+                      // ═══════════════════════════════════════════════════════
+                      // DESNI PANEL (Agenti Grid)
+                      // ═══════════════════════════════════════════════════════
+                      Expanded(
+                        flex: 65,
+                        child: Padding(
+                          padding: const EdgeInsets.all(30),
+                          child: GridView.count(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 25,
+                            mainAxisSpacing: 25,
+                            childAspectRatio: 1.3,
+                            children: [
+                              _buildAgentCard(
+                                title: Translations.t('agent_reception'),
+                                desc: "Chat, FAQ, Assistance",
+                                icon: Icons.support_agent,
+                                color: const Color(0xFFD4AF37),
+                                onTap: () => _openAgent(
+                                  'reception',
+                                  Translations.t('agent_reception'),
+                                  Icons.support_agent,
+                                  const Color(0xFFD4AF37),
+                                ),
+                                delay: 100,
                               ),
-                            ),
+                              _buildAgentCard(
+                                title: Translations.t('agent_house'),
+                                desc: "AC, Lights, Pool",
+                                icon: Icons.home_filled,
+                                color: Colors.blueAccent,
+                                onTap: () => _openAgent(
+                                  'house',
+                                  Translations.t('agent_house'),
+                                  Icons.home_filled,
+                                  Colors.blueAccent,
+                                ),
+                                delay: 200,
+                              ),
+                              _buildAgentCard(
+                                title: Translations.t('agent_gastro'),
+                                desc: "Restaurants & Delivery",
+                                icon: Icons.restaurant_menu,
+                                color: Colors.orangeAccent,
+                                onTap: () => _openAgent(
+                                  'gastro',
+                                  Translations.t('agent_gastro'),
+                                  Icons.restaurant_menu,
+                                  Colors.orangeAccent,
+                                ),
+                                delay: 300,
+                              ),
+                              _buildAgentCard(
+                                title: Translations.t('agent_local'),
+                                desc: "Beaches, Tours, Events",
+                                icon: Icons.map_outlined,
+                                color: Colors.greenAccent,
+                                onTap: () => _openAgent(
+                                  'local',
+                                  Translations.t('agent_local'),
+                                  Icons.map_outlined,
+                                  Colors.greenAccent,
+                                ),
+                                delay: 400,
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 10),
-
-                        // Help button
-                        Center(
-                          child: TextButton(
-                            onPressed: _showHelpDialog,
-                            child: const Text(
-                              "Need Help?",
-                              style:
-                                  TextStyle(color: Colors.grey, fontSize: 12),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // ═══════════════════════════════════════════════════════
-                // DESNI PANEL (Agenti Grid)
-                // ═══════════════════════════════════════════════════════
-                Expanded(
-                  flex: 65,
-                  child: Padding(
-                    padding: const EdgeInsets.all(30),
-                    child: GridView.count(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 25,
-                      mainAxisSpacing: 25,
-                      childAspectRatio: 1.3,
-                      children: [
-                        _buildAgentCard(
-                          title: Translations.t('agent_reception'),
-                          desc: "Chat, FAQ, Assistance",
-                          icon: Icons.support_agent,
-                          color: const Color(0xFFD4AF37),
-                          onTap: () => _openAgent(
-                            'reception',
-                            Translations.t('agent_reception'),
-                            Icons.support_agent,
-                            const Color(0xFFD4AF37),
-                          ),
-                          delay: 100,
-                        ),
-                        _buildAgentCard(
-                          title: Translations.t('agent_house'),
-                          desc: "AC, Lights, Pool",
-                          icon: Icons.home_filled,
-                          color: Colors.blueAccent,
-                          onTap: () => _openAgent(
-                            'house',
-                            Translations.t('agent_house'),
-                            Icons.home_filled,
-                            Colors.blueAccent,
-                          ),
-                          delay: 200,
-                        ),
-                        _buildAgentCard(
-                          title: Translations.t('agent_gastro'),
-                          desc: "Restaurants & Delivery",
-                          icon: Icons.restaurant_menu,
-                          color: Colors.orangeAccent,
-                          onTap: () => _openAgent(
-                            'gastro',
-                            Translations.t('agent_gastro'),
-                            Icons.restaurant_menu,
-                            Colors.orangeAccent,
-                          ),
-                          delay: 300,
-                        ),
-                        _buildAgentCard(
-                          title: Translations.t('agent_local'),
-                          desc: "Beaches, Tours, Events",
-                          icon: Icons.map_outlined,
-                          color: Colors.greenAccent,
-                          onTap: () => _openAgent(
-                            'local',
-                            Translations.t('agent_local'),
-                            Icons.map_outlined,
-                            Colors.greenAccent,
-                          ),
-                          delay: 400,
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ],

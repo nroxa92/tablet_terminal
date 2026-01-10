@@ -1,7 +1,8 @@
 // FILE: lib/ui/screens/feedback_screen.dart
 // OPIS: Ekran za ocjenjivanje prije odjave.
 // LOGIKA: 5 zvjezdica = QR za Google Review, <5 = interno web panelu
-// VERZIJA: 2.0 - Koristi StorageService, FirestoreService, prijevodi
+// VERZIJA: 3.0 - FAZA 2: OfflineBanner + Offline queue
+// DATUM: 2026-01-10
 
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -9,7 +10,10 @@ import 'package:animate_do/animate_do.dart';
 
 import '../../data/services/storage_service.dart';
 import '../../data/services/firestore_service.dart';
+import '../../data/services/connectivity_service.dart';
+import '../../data/services/offline_queue_service.dart';
 import '../../utils/translations.dart';
+import '../widgets/offline_indicator.dart';
 
 class FeedbackScreen extends StatefulWidget {
   const FeedbackScreen({super.key});
@@ -86,10 +90,38 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   }
 
   Future<void> _saveFeedbackToFirebase() async {
-    await FirestoreService.saveFeedback(
-      rating: _rating,
-      comment: _commentController.text.trim(),
-    );
+    // ⭐ FAZA 2: Provjeri internet konekciju
+    final isOnline = ConnectivityService.isOnline;
+
+    if (isOnline) {
+      // Online - spremi direktno
+      await FirestoreService.saveFeedback(
+        rating: _rating,
+        comment: _commentController.text.trim(),
+      );
+    } else {
+      // Offline - stavi u queue
+      await OfflineQueueService.queueSaveFeedback(
+        rating: _rating,
+        comment: _commentController.text.trim(),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.cloud_queue, color: Colors.white),
+                SizedBox(width: 10),
+                Text("Feedback saved. Will sync when online."),
+              ],
+            ),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -102,8 +134,18 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      body: Center(
-        child: _isSubmitted ? _buildThankYouView() : _buildRatingForm(),
+      body: Column(
+        children: [
+          // ⭐ FAZA 2: OFFLINE BANNER
+          const OfflineBanner(),
+
+          // GLAVNI SADRŽAJ
+          Expanded(
+            child: Center(
+              child: _isSubmitted ? _buildThankYouView() : _buildRatingForm(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -348,8 +390,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                 width: 90,
                 height: 90,
                 decoration: BoxDecoration(
-                  color: (isPerfect ? Colors.red : Colors.green)
-                      .withValues(alpha: 0.1),
+                  color:
+                      (isPerfect ? Colors.red : Colors.green).withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(

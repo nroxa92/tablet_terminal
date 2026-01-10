@@ -1,15 +1,20 @@
 // FILE: lib/data/services/signature_storage_service.dart
 // OPIS: Upload potpisa u Firebase Storage, URL u Firestore
-// VERZIJA: 5.1 - FIX: Kompatibilno s postojećim StorageService
-// DATUM: 2026-01-09
+// VERZIJA: 6.0 - FAZA 2: Offline Queue Integration
+// DATUM: 2026-01-10
 //
 // ✅ STANDARD: SVE camelCase
 // ✅ STORAGE PATH: signatures/{ownerId}/{signatureId}.png
+// ✅ OFFLINE: Lokalno spremanje + queue
 
 import 'package:flutter/foundation.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'storage_service.dart';
+import 'connectivity_service.dart';
+import 'offline_queue_service.dart';
+import 'sentry_service.dart';
+import 'performance_service.dart';
 
 class SignatureStorageService {
   static final FirebaseStorage _storage = FirebaseStorage.instance;
@@ -20,23 +25,41 @@ class SignatureStorageService {
   // ============================================================
 
   /// Upload potpisa u Storage i vraća URL
-  ///
-  /// [signatureBytes] - PNG bytes potpisa
-  /// [bookingId] - ID bookinga za povezivanje
-  /// [guestName] - Ime gosta
-  ///
-  /// Returns: Download URL slike
+  /// S offline fallback - sprema lokalno ako nema interneta
   static Future<String> uploadSignature({
     required Uint8List signatureBytes,
     required String bookingId,
     required String guestName,
   }) async {
+    // Start performance trace
+    await PerformanceService.startSignatureUploadTrace();
+
+    // Ako smo offline, spremi lokalno
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Saving signature locally...');
+
+      final localPath = await OfflineQueueService.saveSignatureLocally(
+        signatureBytes,
+        bookingId,
+      );
+
+      // Queue upload za kasnije
+      await OfflineQueueService.queueUploadSignature(
+        bookingId: bookingId,
+        guestName: guestName,
+        localPath: localPath,
+      );
+
+      SentryService.logSignature(uploaded: false);
+      await PerformanceService.stopSignatureUploadTrace(success: false);
+
+      return 'offline://$localPath';
+    }
+
     try {
       final ownerId = StorageService.getOwnerId() ?? 'unknown';
       final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-      // ✅ Path koristi ownerId
-      // Storage path: signatures/{ownerId}/{bookingId}_{timestamp}.png
       final String path = 'signatures/$ownerId/${bookingId}_$timestamp.png';
 
       final ref = _storage.ref().child(path);
@@ -45,9 +68,9 @@ class SignatureStorageService {
         SettableMetadata(
           contentType: 'image/png',
           customMetadata: {
-            'bookingId': bookingId, // ✅ camelCase
-            'guestName': guestName, // ✅ camelCase
-            'ownerId': ownerId, // ✅ camelCase
+            'bookingId': bookingId,
+            'guestName': guestName,
+            'ownerId': ownerId,
             'uploadedAt': DateTime.now().toIso8601String(),
           },
         ),
@@ -56,10 +79,31 @@ class SignatureStorageService {
       final downloadUrl = await uploadTask.ref.getDownloadURL();
 
       debugPrint('✅ Signature uploaded: $path');
+      SentryService.logSignature(uploaded: true);
+      await PerformanceService.stopSignatureUploadTrace(
+        success: true,
+        fileSizeKb: signatureBytes.length ~/ 1024,
+      );
+
       return downloadUrl;
     } catch (e) {
-      debugPrint('❌ Signature upload error: $e');
-      rethrow;
+      debugPrint('❌ Signature upload error (saving locally): $e');
+      SentryService.captureException(e, hint: 'Signature upload failed');
+
+      // Fallback na lokalno spremanje
+      final localPath = await OfflineQueueService.saveSignatureLocally(
+        signatureBytes,
+        bookingId,
+      );
+
+      await OfflineQueueService.queueUploadSignature(
+        bookingId: bookingId,
+        guestName: guestName,
+        localPath: localPath,
+      );
+
+      await PerformanceService.stopSignatureUploadTrace(success: false);
+      return 'offline://$localPath';
     }
   }
 
@@ -68,8 +112,7 @@ class SignatureStorageService {
   // ============================================================
 
   /// Sprema signature dokument u Firestore s referencom na booking
-  ///
-  /// ⚠️ KRITIČNO: bookingId je OBAVEZAN za GDPR cleanup!
+  /// S offline fallback
   static Future<String> saveSignatureWithBooking({
     required Uint8List signatureBytes,
     required String bookingId,
@@ -85,24 +128,29 @@ class SignatureStorageService {
       if (unitId == null) throw "No Unit ID";
       if (ownerId == null) throw "No Owner ID";
 
-      // 1. Upload sliku u Storage
+      // 1. Upload sliku u Storage (s offline fallback)
       final signatureUrl = await uploadSignature(
         signatureBytes: signatureBytes,
         bookingId: bookingId,
         guestName: guestName,
       );
 
+      // Ako je offline (URL počinje s 'offline://'), ne spremaj u Firestore
+      if (signatureUrl.startsWith('offline://')) {
+        debugPrint('📴 Signature saved locally, will sync later');
+        return 'queued_${DateTime.now().millisecondsSinceEpoch}';
+      }
+
       // 2. Spremi dokument u Firestore
-      // ✅ SVA polja camelCase
       final signatureData = {
-        'ownerId': ownerId, // ✅ camelCase
-        'bookingId': bookingId, // ✅ camelCase - KRITIČNO za cleanup!
-        'unitId': unitId, // ✅ camelCase
-        'guestName': guestName, // ✅ camelCase
-        'signatureUrl': signatureUrl, // ✅ camelCase - Storage URL!
-        'signedAt': FieldValue.serverTimestamp(), // ✅ camelCase
+        'ownerId': ownerId,
+        'bookingId': bookingId,
+        'unitId': unitId,
+        'guestName': guestName,
+        'signatureUrl': signatureUrl,
+        'signedAt': FieldValue.serverTimestamp(),
         'language': StorageService.getLanguage(),
-        'rulesVersion': rulesVersion, // ✅ camelCase
+        'rulesVersion': rulesVersion,
         'platform': 'Android Kiosk',
       };
 
@@ -112,6 +160,7 @@ class SignatureStorageService {
       return docRef.id;
     } catch (e) {
       debugPrint('❌ Save signature error: $e');
+      SentryService.captureException(e, hint: 'Save signature failed');
       rethrow;
     }
   }
@@ -131,29 +180,35 @@ class SignatureStorageService {
       final ownerId = StorageService.getOwnerId();
       if (ownerId == null) throw "No Owner ID";
 
-      // 1. Upload u Storage
+      // 1. Upload u Storage (s offline fallback)
       final signatureUrl = await uploadSignature(
         signatureBytes: signatureBytes,
         bookingId: bookingId,
         guestName: guestName,
       );
 
+      // Ako je offline, vrati placeholder
+      if (signatureUrl.startsWith('offline://')) {
+        debugPrint('📴 Guest signature saved locally');
+        return signatureUrl;
+      }
+
       // 2. Update guest dokument u subcollection
-      // ✅ camelCase
       await _db
           .collection('bookings')
           .doc(bookingId)
           .collection('guests')
           .doc(guestId)
           .update({
-        'signatureUrl': signatureUrl, // ✅ camelCase
-        'signedAt': FieldValue.serverTimestamp(), // ✅ camelCase
+        'signatureUrl': signatureUrl,
+        'signedAt': FieldValue.serverTimestamp(),
       });
 
       debugPrint('✅ Guest signature saved for: $guestId');
       return signatureUrl;
     } catch (e) {
       debugPrint('❌ Save guest signature error: $e');
+      SentryService.captureException(e, hint: 'Save guest signature failed');
       rethrow;
     }
   }
@@ -163,14 +218,17 @@ class SignatureStorageService {
   // ============================================================
 
   /// Briše sve potpise vezane uz booking (poziva se na FINISH)
-  ///
-  /// ⚠️ Ovo je GDPR cleanup - briše osobne podatke nakon checkout-a
   static Future<int> deleteSignaturesByBooking(String bookingId) async {
+    // Ne možemo brisati offline
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Cannot delete signatures');
+      return 0;
+    }
+
     try {
-      // ✅ Query koristi camelCase
       final querySnapshot = await _db
           .collection('signatures')
-          .where('bookingId', isEqualTo: bookingId) // ✅ camelCase
+          .where('bookingId', isEqualTo: bookingId)
           .get();
 
       if (querySnapshot.docs.isEmpty) {
@@ -185,8 +243,10 @@ class SignatureStorageService {
           final data = doc.data();
 
           // Briši sliku iz Storage-a ako postoji URL
-          final signatureUrl = data['signatureUrl']; // ✅ camelCase
-          if (signatureUrl != null && signatureUrl.toString().isNotEmpty) {
+          final signatureUrl = data['signatureUrl'];
+          if (signatureUrl != null &&
+              signatureUrl.toString().isNotEmpty &&
+              !signatureUrl.toString().startsWith('offline://')) {
             try {
               final ref = _storage.refFromURL(signatureUrl);
               await ref.delete();
@@ -208,6 +268,7 @@ class SignatureStorageService {
       return deletedCount;
     } catch (e) {
       debugPrint('❌ Delete signatures error: $e');
+      SentryService.captureException(e, hint: 'Delete signatures failed');
       return 0;
     }
   }
@@ -216,13 +277,16 @@ class SignatureStorageService {
   // DELETE SIGNATURES BY UNIT ID (za Factory Reset)
   // ============================================================
 
-  /// Briše sve potpise za unit (factory reset scenario)
   static Future<int> deleteSignaturesByUnit(String unitId) async {
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Cannot delete unit signatures');
+      return 0;
+    }
+
     try {
-      // ✅ camelCase
       final querySnapshot = await _db
           .collection('signatures')
-          .where('unitId', isEqualTo: unitId) // ✅ camelCase
+          .where('unitId', isEqualTo: unitId)
           .get();
 
       int deletedCount = 0;
@@ -232,8 +296,9 @@ class SignatureStorageService {
         final data = doc.data();
 
         // Briši sliku iz Storage-a
-        final signatureUrl = data['signatureUrl']; // ✅ camelCase
-        if (signatureUrl != null) {
+        final signatureUrl = data['signatureUrl'];
+        if (signatureUrl != null &&
+            !signatureUrl.toString().startsWith('offline://')) {
           try {
             final ref = _storage.refFromURL(signatureUrl);
             await ref.delete();
@@ -257,13 +322,16 @@ class SignatureStorageService {
   // DELETE SIGNATURES BY OWNER ID (za Account Delete / GDPR)
   // ============================================================
 
-  /// Briše sve potpise za vlasnika (GDPR - pravo na zaborav)
   static Future<int> deleteSignaturesByOwner(String ownerId) async {
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Cannot delete owner signatures');
+      return 0;
+    }
+
     try {
-      // ✅ camelCase
       final querySnapshot = await _db
           .collection('signatures')
-          .where('ownerId', isEqualTo: ownerId) // ✅ camelCase
+          .where('ownerId', isEqualTo: ownerId)
           .get();
 
       int deletedCount = 0;
@@ -273,8 +341,9 @@ class SignatureStorageService {
           final data = doc.data();
 
           // Briši sliku iz Storage-a
-          final signatureUrl = data['signatureUrl']; // ✅ camelCase
-          if (signatureUrl != null) {
+          final signatureUrl = data['signatureUrl'];
+          if (signatureUrl != null &&
+              !signatureUrl.toString().startsWith('offline://')) {
             try {
               final ref = _storage.refFromURL(signatureUrl);
               await ref.delete();
@@ -300,15 +369,18 @@ class SignatureStorageService {
   // GET SIGNATURES FOR BOOKING
   // ============================================================
 
-  /// Dohvaća sve potpise za booking
   static Future<List<Map<String, dynamic>>> getSignaturesForBooking(
       String bookingId) async {
+    if (!ConnectivityService.isOnline) {
+      debugPrint('📴 Offline: Cannot fetch signatures');
+      return [];
+    }
+
     try {
-      // ✅ camelCase
       final querySnapshot = await _db
           .collection('signatures')
-          .where('bookingId', isEqualTo: bookingId) // ✅ camelCase
-          .orderBy('signedAt', descending: true) // ✅ camelCase
+          .where('bookingId', isEqualTo: bookingId)
+          .orderBy('signedAt', descending: true)
           .get();
 
       return querySnapshot.docs
@@ -321,5 +393,19 @@ class SignatureStorageService {
       debugPrint('❌ Get signatures error: $e');
       return [];
     }
+  }
+
+  // ============================================================
+  // HELPER: Check if signature is local (offline)
+  // ============================================================
+
+  static bool isOfflineSignature(String url) {
+    return url.startsWith('offline://');
+  }
+
+  /// Dohvati lokalni path iz offline URL-a
+  static String? getLocalPath(String offlineUrl) {
+    if (!isOfflineSignature(offlineUrl)) return null;
+    return offlineUrl.replaceFirst('offline://', '');
   }
 }
