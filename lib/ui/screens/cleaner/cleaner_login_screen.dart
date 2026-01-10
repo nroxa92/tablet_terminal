@@ -1,6 +1,6 @@
 // FILE: lib/ui/screens/cleaner/cleaner_login_screen.dart
-// OPIS: PIN pristup za čistačice i master reset.
-// VERZIJA: 3.0 - FAZA 1: Brute-force protection + Sentry logging
+// OPIS: PIN pristup za čistačice i admin panel.
+// VERZIJA: 4.0 - FAZA 4: Master PIN otvara Admin Menu
 // DATUM: 2026-01-10
 
 import 'dart:async';
@@ -8,8 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import '../../../data/services/storage_service.dart';
-import '../../../data/services/tablet_auth_service.dart';
 import '../../../data/services/sentry_service.dart';
+import '../admin/admin_menu_screen.dart'; // 🆕 FAZA 4: Admin Menu
 
 class CleanerLoginScreen extends StatefulWidget {
   const CleanerLoginScreen({super.key});
@@ -126,11 +126,18 @@ class _CleanerLoginScreenState extends State<CleanerLoginScreen> {
         Navigator.pushReplacementNamed(context, '/cleaner_tasks');
       }
     } else if (pin == _masterPin) {
-      // ⚠️ MASTER PIN - Factory Reset
+      // 🆕 FAZA 4: MASTER PIN - Opens Admin Menu (umjesto direktnog reseta)
       await StorageService.resetPinAttempts();
       SentryService.logPinAttempt(success: true, pinType: 'master');
 
-      await _performFactoryReset();
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _pinController.clear();
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminMenuScreen()),
+        );
+      }
     } else {
       // ❌ Krivi PIN - inkrementiraj pokušaje
       await StorageService.incrementPinAttempts();
@@ -165,86 +172,6 @@ class _CleanerLoginScreenState extends State<CleanerLoginScreen> {
           _isLoading = false;
         });
         _pinController.clear();
-      }
-    }
-  }
-
-  Future<void> _performFactoryReset() async {
-    // Pokaži confirmation dialog
-    final confirm = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-            SizedBox(width: 12),
-            Text("Factory Reset", style: TextStyle(color: Colors.white)),
-          ],
-        ),
-        content: const Text(
-          "This will unlink this tablet from the current property.\n\n"
-          "Use this when moving the tablet to a different unit.\n\n"
-          "Are you sure?",
-          style: TextStyle(color: Colors.grey, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("CANCEL", style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text("RESET"),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) {
-      setState(() => _isLoading = false);
-      _pinController.clear();
-      return;
-    }
-
-    // Izvršava Factory Reset
-    try {
-      SentryService.logUserAction('factory_reset_initiated');
-      await TabletAuthService.fullReset();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 12),
-                Text("Device unlinked successfully"),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-
-        // Idi na Setup Screen
-        Navigator.pushNamedAndRemoveUntil(context, '/setup', (r) => false);
-      }
-    } catch (e) {
-      debugPrint("❌ Factory reset error: $e");
-      SentryService.captureException(e, hint: 'Factory reset failed');
-
-      if (mounted) {
-        setState(() {
-          _error = "Reset failed: $e";
-          _isLoading = false;
-        });
       }
     }
   }
@@ -513,9 +440,9 @@ class _CleanerLoginScreenState extends State<CleanerLoginScreen> {
                       ),
                       const Divider(color: Colors.white10, height: 20),
                       _buildInfoRow(
-                        Icons.settings_backup_restore,
+                        Icons.admin_panel_settings, // 🆕 Promijenjena ikona
                         "Master PIN",
-                        "Factory reset (relocate tablet)",
+                        "Opens Admin Panel", // 🆕 Promijenjen tekst
                         Colors.orange,
                       ),
                     ],
