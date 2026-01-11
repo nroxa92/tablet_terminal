@@ -4,7 +4,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
-import '../../../utils/translations.dart';
+import '../../../utils/translations/translations.dart';
 import '../../../data/services/storage_service.dart';
 import '../../../data/services/checkin_service.dart';
 

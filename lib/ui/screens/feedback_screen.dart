@@ -12,7 +12,7 @@ import '../../data/services/storage_service.dart';
 import '../../data/services/firestore_service.dart';
 import '../../data/services/connectivity_service.dart';
 import '../../data/services/offline_queue_service.dart';
-import '../../utils/translations.dart';
+import '../../utils/translations/translations.dart';
 import '../widgets/offline_indicator.dart';
 
 class FeedbackScreen extends StatefulWidget {
@@ -390,8 +390,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                 width: 90,
                 height: 90,
                 decoration: BoxDecoration(
-                  color:
-                      (isPerfect ? Colors.red : Colors.green).withValues(alpha: 0.1),
+                  color: (isPerfect ? Colors.red : Colors.green)
+                      .withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(

@@ -19,7 +19,7 @@ import '../../data/services/connectivity_service.dart';
 // Widgeti
 import '../widgets/place_card.dart';
 import '../widgets/offline_indicator.dart';
-import '../../utils/translations.dart';
+import '../../utils/translations/translations.dart';
 
 class ChatScreen extends StatefulWidget {
   final String? agentId;
@@ -606,8 +606,9 @@ class _ChatScreenState extends State<ChatScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         constraints: const BoxConstraints(maxWidth: 600),
         decoration: BoxDecoration(
-          color:
-              isUser ? agentColor.withValues(alpha: 0.85) : const Color(0xFF2A2A2A),
+          color: isUser
+              ? agentColor.withValues(alpha: 0.85)
+              : const Color(0xFF2A2A2A),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(20),
             topRight: const Radius.circular(20),

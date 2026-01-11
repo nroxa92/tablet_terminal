@@ -1,9 +1,11 @@
 // FILE: lib/ui/screens/checkin/guest_confirmation_screen.dart
-// VERZIJA: 1.1 - FIXED (bez upozorenja)
+// VERZIJA: 2.0 - LOKALIZACIJA (EN fallback + Translations)
+// DATUM: 2026-01-11
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../data/models/guest_model.dart';
+import '../../../utils/translations/translations.dart';
 
 class GuestConfirmationScreen extends StatefulWidget {
   final Guest guest;
@@ -99,7 +101,8 @@ class _GuestConfirmationScreenState extends State<GuestConfirmationScreen> {
       final emptyFields = _guest.emptyFields;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Popunite polja: ${emptyFields.join(", ")}'),
+          content: Text(
+              '${Translations.t('confirm_fill_fields')}: ${emptyFields.join(", ")}'),
           backgroundColor: Colors.red,
         ),
       );
@@ -121,15 +124,16 @@ class _GuestConfirmationScreenState extends State<GuestConfirmationScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Gost ${widget.guestNumber} / ${widget.totalGuests}'),
+        title: Text(
+            '${Translations.t('cam_guest')} ${widget.guestNumber} / ${widget.totalGuests}'),
         backgroundColor: const Color(0xFF1A3A4A),
         foregroundColor: Colors.white,
         actions: [
           TextButton.icon(
             onPressed: widget.onRescan,
             icon: const Icon(Icons.refresh, color: Colors.white70),
-            label: const Text('PONOVI SKEN',
-                style: TextStyle(color: Colors.white70)),
+            label: Text(Translations.t('confirm_rescan'),
+                style: const TextStyle(color: Colors.white70)),
           ),
         ],
       ),
@@ -148,27 +152,33 @@ class _GuestConfirmationScreenState extends State<GuestConfirmationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Provjerite i ispravite podatke',
-                  style: TextStyle(
+                Text(
+                  Translations.t('cam_verify_data'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Sva polja su obavezna za eVisitor prijavu',
-                  style: TextStyle(color: Color(0x99FFFFFF), fontSize: 14),
+                Text(
+                  Translations.t('confirm_fields_required'),
+                  style:
+                      const TextStyle(color: Color(0x99FFFFFF), fontSize: 14),
                 ),
                 const SizedBox(height: 24),
-                _buildSectionHeader('OSOBNI PODACI', Icons.person),
+                _buildSectionHeader(
+                    Translations.t('cam_personal_data'), Icons.person),
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(child: _buildTextField(_firstNameCtrl, 'Ime')),
+                    Expanded(
+                        child: _buildTextField(_firstNameCtrl,
+                            Translations.t('field_first_name'))),
                     const SizedBox(width: 16),
-                    Expanded(child: _buildTextField(_lastNameCtrl, 'Prezime')),
+                    Expanded(
+                        child: _buildTextField(
+                            _lastNameCtrl, Translations.t('field_last_name'))),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -176,8 +186,8 @@ class _GuestConfirmationScreenState extends State<GuestConfirmationScreen> {
                   children: [
                     Expanded(
                         flex: 2,
-                        child: _buildTextField(
-                            _dateOfBirthCtrl, 'Datum rođenja',
+                        child: _buildTextField(_dateOfBirthCtrl,
+                            Translations.t('field_birth_date'),
                             hint: 'DD.MM.YYYY')),
                     const SizedBox(width: 16),
                     Expanded(flex: 1, child: _buildSexDropdown()),
@@ -187,18 +197,20 @@ class _GuestConfirmationScreenState extends State<GuestConfirmationScreen> {
                 Row(
                   children: [
                     Expanded(
-                        child: _buildTextField(
-                            _placeOfBirthCtrl, 'Mjesto rođenja')),
+                        child: _buildTextField(_placeOfBirthCtrl,
+                            Translations.t('confirm_place_of_birth'))),
                     const SizedBox(width: 16),
                     Expanded(
-                        child: _buildTextField(
-                            _countryOfBirthCtrl, 'Država rođenja')),
+                        child: _buildTextField(_countryOfBirthCtrl,
+                            Translations.t('confirm_country_of_birth'))),
                   ],
                 ),
                 const SizedBox(height: 12),
-                _buildTextField(_nationalityCtrl, 'Državljanstvo'),
+                _buildTextField(
+                    _nationalityCtrl, Translations.t('field_nationality')),
                 const SizedBox(height: 24),
-                _buildSectionHeader('DOKUMENT', Icons.badge),
+                _buildSectionHeader(
+                    Translations.t('confirm_document'), Icons.badge),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -206,25 +218,28 @@ class _GuestConfirmationScreenState extends State<GuestConfirmationScreen> {
                     const SizedBox(width: 16),
                     Expanded(
                         flex: 2,
-                        child: _buildTextField(
-                            _documentNumberCtrl, 'Broj dokumenta')),
+                        child: _buildTextField(_documentNumberCtrl,
+                            Translations.t('field_doc_number'))),
                   ],
                 ),
                 const SizedBox(height: 24),
-                _buildSectionHeader('PREBIVALIŠTE', Icons.home),
+                _buildSectionHeader(
+                    Translations.t('confirm_residence'), Icons.home),
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
-                        child:
-                            _buildTextField(_residenceCountryCtrl, 'Država')),
+                        child: _buildTextField(_residenceCountryCtrl,
+                            Translations.t('confirm_country'))),
                     const SizedBox(width: 16),
                     Expanded(
-                        child: _buildTextField(_residenceCityCtrl, 'Grad')),
+                        child: _buildTextField(_residenceCityCtrl,
+                            Translations.t('confirm_city'))),
                   ],
                 ),
                 const SizedBox(height: 24),
-                _buildSectionHeader('BORAVAK', Icons.calendar_today),
+                _buildSectionHeader(
+                    Translations.t('confirm_stay'), Icons.calendar_today),
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -239,8 +254,8 @@ class _GuestConfirmationScreenState extends State<GuestConfirmationScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Dolazak',
-                                style: TextStyle(
+                            Text(Translations.t('confirm_arrival'),
+                                style: const TextStyle(
                                     color: Color(0x99FFFFFF), fontSize: 12)),
                             const SizedBox(height: 4),
                             Text(arrivalStr,
@@ -257,8 +272,8 @@ class _GuestConfirmationScreenState extends State<GuestConfirmationScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            const Text('Odlazak',
-                                style: TextStyle(
+                            Text(Translations.t('confirm_departure'),
+                                style: const TextStyle(
                                     color: Color(0x99FFFFFF), fontSize: 12)),
                             const SizedBox(height: 4),
                             Text(departureStr,
@@ -281,8 +296,8 @@ class _GuestConfirmationScreenState extends State<GuestConfirmationScreen> {
                     icon: const Icon(Icons.check_circle, size: 24),
                     label: Text(
                       widget.guestNumber < widget.totalGuests
-                          ? 'POTVRDI I SLJEDEĆI GOST'
-                          : 'POTVRDI I NASTAVI',
+                          ? Translations.t('confirm_next_guest')
+                          : Translations.t('confirm_continue'),
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold),
                     ),
@@ -366,9 +381,11 @@ class _GuestConfirmationScreenState extends State<GuestConfirmationScreen> {
           isExpanded: true,
           dropdownColor: const Color(0xFF1A3A4A),
           style: const TextStyle(color: Colors.white, fontSize: 16),
-          items: const [
-            DropdownMenuItem(value: 'M', child: Text('M (Muški)')),
-            DropdownMenuItem(value: 'Ž', child: Text('Ž (Ženski)')),
+          items: [
+            DropdownMenuItem(
+                value: 'M', child: Text(Translations.t('confirm_male'))),
+            DropdownMenuItem(
+                value: 'F', child: Text(Translations.t('confirm_female'))),
           ],
           onChanged: (value) {
             if (value != null) setState(() => _selectedSex = value);
@@ -392,9 +409,11 @@ class _GuestConfirmationScreenState extends State<GuestConfirmationScreen> {
           isExpanded: true,
           dropdownColor: const Color(0xFF1A3A4A),
           style: const TextStyle(color: Colors.white, fontSize: 16),
-          items: const [
-            DropdownMenuItem(value: 'ID_CARD', child: Text('Osobna')),
-            DropdownMenuItem(value: 'PASSPORT', child: Text('Putovnica')),
+          items: [
+            DropdownMenuItem(
+                value: 'ID_CARD', child: Text(Translations.t('doc_id_card'))),
+            DropdownMenuItem(
+                value: 'PASSPORT', child: Text(Translations.t('doc_passport'))),
           ],
           onChanged: (value) {
             if (value != null) setState(() => _selectedDocType = value);

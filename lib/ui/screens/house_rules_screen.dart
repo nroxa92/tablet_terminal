@@ -13,7 +13,7 @@ import '../../data/services/storage_service.dart';
 import '../../data/services/firestore_service.dart';
 import '../../data/services/signature_storage_service.dart';
 import '../../data/services/connectivity_service.dart';
-import '../../utils/translations.dart';
+import '../../utils/translations/translations.dart';
 import '../widgets/offline_indicator.dart';
 
 class HouseRulesScreen extends StatefulWidget {
@@ -380,8 +380,8 @@ Thank you and enjoy your stay!
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color:
-                                      const Color(0xFFD4AF37).withValues(alpha: 0.2),
+                                  color: const Color(0xFFD4AF37)
+                                      .withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: const Icon(
@@ -427,7 +427,8 @@ Thank you and enjoy your stay!
                                 color: Colors.orange.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                    color: Colors.orange.withValues(alpha: 0.3)),
+                                    color:
+                                        Colors.orange.withValues(alpha: 0.3)),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -750,8 +751,8 @@ Thank you and enjoy your stay!
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 10, vertical: 4),
                                           decoration: BoxDecoration(
-                                            color:
-                                                Colors.black.withValues(alpha: 0.3),
+                                            color: Colors.black
+                                                .withValues(alpha: 0.3),
                                             borderRadius:
                                                 BorderRadius.circular(12),
                                           ),

@@ -1,12 +1,13 @@
 // FILE: lib/ui/screens/checkin/checkin_success_screen.dart
 // OPIS: Success screen nakon uspješnog check-ina s animacijom i potvrdom
-// VERZIJA: 1.0 - FAZA 3.5
-// DATUM: 2026-01-10
+// VERZIJA: 2.0 - LOKALIZACIJA (EN fallback + Translations)
+// DATUM: 2026-01-11
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../data/services/storage_service.dart';
 import '../../../data/services/sentry_service.dart';
+import '../../../utils/translations/translations.dart';
 
 class CheckInSuccessScreen extends StatefulWidget {
   final int guestCount;
@@ -143,7 +144,8 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
               colors: [
                 const Color(0xFF121212),
                 const Color(0xFF1A1A1A),
-                const Color(0xFF0D1F0D).withValues(alpha: 0.3), // Subtle green tint
+                const Color(0xFF0D1F0D)
+                    .withValues(alpha: 0.3), // Subtle green tint
               ],
             ),
           ),
@@ -195,9 +197,9 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
                       child: Column(
                         children: [
                           // Title
-                          const Text(
-                            'CHECK-IN USPJEŠAN!',
-                            style: TextStyle(
+                          Text(
+                            Translations.t('success_checkin_complete'),
+                            style: const TextStyle(
                               color: Color(0xFF4CAF50),
                               fontSize: 32,
                               fontWeight: FontWeight.bold,
@@ -209,7 +211,7 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
 
                           // Guest info
                           Text(
-                            'Dobrodošli, ${widget.guestName}!',
+                            '${Translations.t('success_welcome')}, ${widget.guestName}!',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 24,
@@ -249,8 +251,8 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
                                   icon: Icons.people,
                                   value: '${widget.guestCount}',
                                   label: widget.guestCount == 1
-                                      ? 'Gost'
-                                      : 'Gostiju',
+                                      ? Translations.t('success_guest')
+                                      : Translations.t('success_guests'),
                                 ),
                                 Container(
                                   height: 40,
@@ -262,7 +264,7 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
                                 _buildStat(
                                   icon: Icons.timer,
                                   value: '${widget.checkInDuration.inSeconds}s',
-                                  label: 'Trajanje',
+                                  label: Translations.t('success_duration'),
                                 ),
                                 Container(
                                   height: 40,
@@ -274,7 +276,7 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
                                 _buildStat(
                                   icon: Icons.verified,
                                   value: '✓',
-                                  label: 'Potvrđeno',
+                                  label: Translations.t('success_confirmed'),
                                 ),
                               ],
                             ),
@@ -302,7 +304,7 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
                                   const Icon(Icons.arrow_forward, size: 24),
                                   const SizedBox(width: 12),
                                   Text(
-                                    'NASTAVI ($_countdown)',
+                                    '${Translations.t('btn_continue').toUpperCase()} ($_countdown)',
                                     style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -317,7 +319,8 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
                           const SizedBox(height: 16),
 
                           Text(
-                            'Automatski prelazak za $_countdown sekundi...',
+                            Translations.tp('success_auto_redirect',
+                                {'seconds': '$_countdown'}),
                             style: TextStyle(
                               color: Colors.grey[600],
                               fontSize: 12,

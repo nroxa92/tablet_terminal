@@ -1,11 +1,13 @@
 // FILE: lib/ui/screens/checkin/camera_screen.dart
-// VERZIJA: 6.1 - FIXED (bez upozorenja)
+// VERZIJA: 7.0 - LOKALIZACIJA (EN fallback + Translations)
+// DATUM: 2026-01-11
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import '../../../data/services/ocr_service.dart';
 import '../../../data/models/guest_model.dart';
+import '../../utils/translations/translations.dart';
 
 class CameraScreen extends StatefulWidget {
   final String documentType;
@@ -34,7 +36,7 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isInitialized = false;
   bool _isProcessing = false;
 
-  int _currentStep = 1; // 1 = stražnja, 2 = prednja
+  int _currentStep = 1; // 1 = back, 2 = front
 
   // ignore: prefer_final_fields - mora se mijenjati tijekom skeniranja
   Guest _guest = Guest();
@@ -90,7 +92,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
     try {
       final XFile image = await _controller!.takePicture();
-      debugPrint('📸 Slika snimljena: ${image.path}');
+      debugPrint('📸 Image captured: ${image.path}');
 
       final scanType = _currentStep == 1 ? 'back' : 'front';
       final result = await OCRService.scanDocument(
@@ -104,9 +106,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
         if (result['success'] == true) {
           setState(() => _currentStep = 2);
-          _showSnackBar('✓ Stražnja strana skenirana!', Colors.green);
+          _showSnackBar(
+              '✓ ${Translations.t('cam_back_scanned')}', Colors.green);
         } else {
-          _showSnackBar('Nije pronađen MRZ. Pokušajte ponovo.', Colors.orange);
+          _showSnackBar(Translations.t('cam_mrz_not_found'), Colors.orange);
         }
       } else {
         _mergeFrontSideData(result);
@@ -118,7 +121,7 @@ class _CameraScreenState extends State<CameraScreen> {
       } catch (_) {}
     } catch (e) {
       debugPrint('❌ Capture error: $e');
-      _showSnackBar('Greška: $e', Colors.red);
+      _showSnackBar('${Translations.t('error')}: $e', Colors.red);
     } finally {
       setState(() => _isProcessing = false);
     }
@@ -136,7 +139,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _guest.residenceCity = data['residenceCity'] ?? '';
     _guest.residenceCountry = data['residenceCountry'] ?? '';
 
-    debugPrint('📋 Guest nakon stražnje: $_guest');
+    debugPrint('📋 Guest after back: $_guest');
   }
 
   void _mergeFrontSideData(Map<String, dynamic> data) {
@@ -147,7 +150,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _guest.countryOfBirth = data['countryOfBirth'];
     }
 
-    debugPrint('📋 Guest nakon prednje: $_guest');
+    debugPrint('📋 Guest after front: $_guest');
   }
 
   void _completeScanning() {
@@ -170,13 +173,12 @@ class _CameraScreenState extends State<CameraScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Ručni unos'),
-        content: const Text(
-            'Želite li preskočiti skeniranje i ručno unijeti podatke?'),
+        title: Text(Translations.t('cam_manual_entry')),
+        content: Text(Translations.t('cam_skip_scan_confirm')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('NE'),
+            child: Text(Translations.t('btn_cancel').toUpperCase()),
           ),
           ElevatedButton(
             onPressed: () {
@@ -187,7 +189,7 @@ class _CameraScreenState extends State<CameraScreen> {
               _guest.departureDate = widget.departureDate;
               widget.onScanComplete(_guest);
             },
-            child: const Text('DA, RUČNI UNOS'),
+            child: Text(Translations.t('cam_yes_manual').toUpperCase()),
           ),
         ],
       ),
@@ -217,7 +219,7 @@ class _CameraScreenState extends State<CameraScreen> {
       child: Column(
         children: [
           Text(
-            'Gost ${widget.guestNumber} / ${widget.totalGuests}',
+            '${Translations.t('cam_guest')} ${widget.guestNumber} / ${widget.totalGuests}',
             style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.7), fontSize: 14),
           ),
@@ -225,20 +227,22 @@ class _CameraScreenState extends State<CameraScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildStepIndicator(1, 'STRAŽNJA'),
+              _buildStepIndicator(
+                  1, Translations.t('cam_back_side').toUpperCase()),
               Container(
                 width: 40,
                 height: 2,
                 color: _currentStep >= 2 ? Colors.green : Colors.white30,
               ),
-              _buildStepIndicator(2, 'PREDNJA'),
+              _buildStepIndicator(
+                  2, Translations.t('cam_front_side').toUpperCase()),
             ],
           ),
           const SizedBox(height: 12),
           Text(
             _currentStep == 1
-                ? 'Postavite STRAŽNJU stranu dokumenta\n(MRZ zona s <<<)'
-                : 'Postavite PREDNJU stranu dokumenta\n(sa slikom)',
+                ? Translations.t('cam_position_back')
+                : Translations.t('cam_position_front'),
             textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.white, fontSize: 16),
           ),
@@ -313,15 +317,15 @@ class _CameraScreenState extends State<CameraScreen> {
         if (_isProcessing)
           Container(
             color: const Color(0x88000000),
-            child: const Center(
+            child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(color: Colors.white),
-                  SizedBox(height: 16),
+                  const CircularProgressIndicator(color: Colors.white),
+                  const SizedBox(height: 16),
                   Text(
-                    'Obrada...',
-                    style: TextStyle(color: Colors.white, fontSize: 18),
+                    Translations.t('cam_processing'),
+                    style: const TextStyle(color: Colors.white, fontSize: 18),
                   ),
                 ],
               ),
@@ -356,10 +360,10 @@ class _CameraScreenState extends State<CameraScreen> {
                   bottomRight: Radius.circular(9),
                 ),
               ),
-              child: const Text(
-                'MRZ ZONA',
+              child: Text(
+                Translations.t('cam_mrz_zone'),
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   color: Colors.orange,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
@@ -387,7 +391,9 @@ class _CameraScreenState extends State<CameraScreen> {
               color: Colors.white70,
             ),
             label: Text(
-              _currentStep == 1 ? 'NATRAG' : 'PONOVI',
+              _currentStep == 1
+                  ? Translations.t('btn_back').toUpperCase()
+                  : Translations.t('btn_retake').toUpperCase(),
               style: const TextStyle(color: Colors.white70),
             ),
           ),
@@ -411,9 +417,9 @@ class _CameraScreenState extends State<CameraScreen> {
           TextButton.icon(
             onPressed: _skipToManualEntry,
             icon: const Icon(Icons.edit, color: Colors.white70),
-            label: const Text(
-              'RUČNO',
-              style: TextStyle(color: Colors.white70),
+            label: Text(
+              Translations.t('cam_manual').toUpperCase(),
+              style: const TextStyle(color: Colors.white70),
             ),
           ),
         ],

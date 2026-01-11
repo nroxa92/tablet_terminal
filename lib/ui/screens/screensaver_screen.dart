@@ -10,7 +10,7 @@ import 'package:animate_do/animate_do.dart';
 import '../../data/services/firestore_service.dart';
 import '../../data/services/storage_service.dart';
 import '../../data/services/weather_service.dart';
-import '../../utils/translations.dart';
+import '../../utils/translations/translations.dart';
 
 class ScreensaverScreen extends StatefulWidget {
   const ScreensaverScreen({super.key});

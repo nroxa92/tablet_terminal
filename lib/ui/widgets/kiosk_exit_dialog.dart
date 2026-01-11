@@ -1,11 +1,12 @@
 // FILE: lib/ui/widgets/kiosk_exit_dialog.dart
 // OPIS: Dialog za unos 6-znamenkastog PIN-a i izlaz iz kiosk mode-a
-// VERZIJA: 2.0 - Prilagođeno Web Panel specifikaciji (6 znamenki FIKSNO)
-// DATUM: 2026-01-10
+// VERZIJA: 3.0 - LOKALIZACIJA (EN fallback + Translations)
+// DATUM: 2026-01-11
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/services/kiosk_service.dart';
+import '../../utils/translations/translations.dart';
 
 class KioskExitDialog extends StatefulWidget {
   const KioskExitDialog({super.key});
@@ -76,13 +77,13 @@ class _KioskExitDialogState extends State<KioskExitDialog> {
 
     // Provjeri duljinu
     if (pin.length != KioskService.pinLength) {
-      setState(() => _errorMessage = 'Unesite svih 6 znamenki');
+      setState(() => _errorMessage = Translations.t('kiosk_enter_all_digits'));
       return;
     }
 
     // Provjeri max pokušaje
     if (_attempts >= _maxAttempts) {
-      setState(() => _errorMessage = 'Previše pokušaja. Pokušajte kasnije.');
+      setState(() => _errorMessage = Translations.t('kiosk_too_many_attempts'));
       return;
     }
 
@@ -101,13 +102,13 @@ class _KioskExitDialogState extends State<KioskExitDialog> {
       } else {
         _attempts++;
         setState(() {
-          _errorMessage =
-              'Pogrešan PIN. Preostalo pokušaja: ${_maxAttempts - _attempts}';
+          _errorMessage = Translations.tp('kiosk_wrong_pin_attempts',
+              {'attempts': '${_maxAttempts - _attempts}'});
         });
         _clearPin();
       }
     } catch (e) {
-      setState(() => _errorMessage = 'Greška: $e');
+      setState(() => _errorMessage = '${Translations.t('error')}: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -161,9 +162,9 @@ class _KioskExitDialogState extends State<KioskExitDialog> {
             ),
           ),
           const SizedBox(width: 12),
-          const Text(
-            'Kiosk Mode',
-            style: TextStyle(
+          Text(
+            Translations.t('kiosk_mode_title'),
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -176,7 +177,7 @@ class _KioskExitDialogState extends State<KioskExitDialog> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
-            'Unesite 6-znamenkasti PIN za izlaz:',
+            Translations.t('kiosk_enter_pin'),
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey[400],
@@ -193,48 +194,49 @@ class _KioskExitDialogState extends State<KioskExitDialog> {
                 height: 55,
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 child: TextField(
-                    controller: _controllers[index],
-                    focusNode: _focusNodes[index]..onKeyEvent = (node, event) {
+                  controller: _controllers[index],
+                  focusNode: _focusNodes[index]
+                    ..onKeyEvent = (node, event) {
                       _onKeyPressed(index, event);
                       return KeyEventResult.ignored;
                     },
-                    obscureText: true,
-                    textAlign: TextAlign.center,
-                    maxLength: 1,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                    decoration: InputDecoration(
-                      counterText: '',
-                      filled: true,
-                      fillColor: const Color(0xFF2A2A2A),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: Color(0xFFD4AF37),
-                          width: 2,
-                        ),
-                      ),
-                      errorBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: Colors.red,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                    onChanged: (value) => _onDigitEntered(index, value),
+                  obscureText: true,
+                  textAlign: TextAlign.center,
+                  maxLength: 1,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
+                  decoration: InputDecoration(
+                    counterText: '',
+                    filled: true,
+                    fillColor: const Color(0xFF2A2A2A),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: Color(0xFFD4AF37),
+                        width: 2,
+                      ),
+                    ),
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: Colors.red,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  onChanged: (value) => _onDigitEntered(index, value),
+                ),
               );
             }),
           ),
@@ -255,9 +257,11 @@ class _KioskExitDialogState extends State<KioskExitDialog> {
                 children: [
                   const Icon(Icons.error_outline, color: Colors.red, size: 16),
                   const SizedBox(width: 8),
-                  Text(
-                    _errorMessage!,
-                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                  Flexible(
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                    ),
                   ),
                 ],
               ),
@@ -271,11 +275,13 @@ class _KioskExitDialogState extends State<KioskExitDialog> {
             children: [
               Icon(Icons.info_outline, size: 14, color: Colors.grey[600]),
               const SizedBox(width: 6),
-              Text(
-                'Kontaktirajte administratora ako ne znate PIN.',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey[600],
+              Flexible(
+                child: Text(
+                  Translations.t('kiosk_contact_admin'),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                  ),
                 ),
               ),
             ],
@@ -286,7 +292,7 @@ class _KioskExitDialogState extends State<KioskExitDialog> {
         TextButton(
           onPressed: _isLoading ? null : () => Navigator.of(context).pop(false),
           child: Text(
-            'Odustani',
+            Translations.t('btn_cancel'),
             style: TextStyle(color: Colors.grey[400]),
           ),
         ),
@@ -310,9 +316,9 @@ class _KioskExitDialogState extends State<KioskExitDialog> {
                     valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
                   ),
                 )
-              : const Text(
-                  'Otključaj',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+              : Text(
+                  Translations.t('kiosk_unlock'),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
         ),
       ],

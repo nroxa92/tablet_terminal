@@ -4,4 +4,4 @@
 // DATUM: 2026-01-10
 
 export 'inactivity_wrapper.dart';
-export 'translations.dart';
+export 'translations/translations.dart';

@@ -7,7 +7,7 @@ import 'package:flag/flag.dart';
 import 'package:animate_do/animate_do.dart';
 
 import '../../../data/services/storage_service.dart';
-import '../../../utils/translations.dart';
+import '../../../utils/translations/translations.dart';
 
 /// Konfiguracija države: kod, ime, treba li skenirati obje strane osobne
 class CountryConfig {

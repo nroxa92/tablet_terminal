@@ -19,7 +19,7 @@ import '../../data/services/weather_service.dart';
 import '../widgets/offline_indicator.dart';
 
 // Utils
-import '../../utils/translations.dart';
+import '../../utils/translations/translations.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -441,7 +441,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     color: Colors.orange.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(
-                                      color: Colors.orange.withValues(alpha: 0.3),
+                                      color:
+                                          Colors.orange.withValues(alpha: 0.3),
                                     ),
                                   ),
                                   child: Row(
