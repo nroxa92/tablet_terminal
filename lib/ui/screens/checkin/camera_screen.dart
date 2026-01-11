@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import '../../../data/services/ocr_service.dart';
 import '../../../data/models/guest_model.dart';
-import '../../utils/translations/translations.dart';
+import '../../../utils/translations/translations.dart';
 
 class CameraScreen extends StatefulWidget {
   final String documentType;

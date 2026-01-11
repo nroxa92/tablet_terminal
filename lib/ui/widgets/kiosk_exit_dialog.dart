@@ -102,7 +102,7 @@ class _KioskExitDialogState extends State<KioskExitDialog> {
       } else {
         _attempts++;
         setState(() {
-          _errorMessage = Translations.tp('kiosk_wrong_pin_attempts',
+          _errorMessage = Translations.t('kiosk_wrong_pin_attempts',
               {'attempts': '${_maxAttempts - _attempts}'});
         });
         _clearPin();

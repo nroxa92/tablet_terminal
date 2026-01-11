@@ -319,7 +319,7 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen>
                           const SizedBox(height: 16),
 
                           Text(
-                            Translations.tp('success_auto_redirect',
+                            Translations.t('success_auto_redirect',
                                 {'seconds': '$_countdown'}),
                             style: TextStyle(
                               color: Colors.grey[600],
