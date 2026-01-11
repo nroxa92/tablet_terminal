@@ -1,422 +1,389 @@
-# 📱 Vesta Lumina Client Terminal
+# Vesta Lumina - Tablet Terminal
 
-> **Tablet Kiosk Application for Guest Check-in**
-> **Part of Vesta Lumina System**
+[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](https://github.com/nroxa92/tablet_terminal)
+[![Platform](https://img.shields.io/badge/platform-Android-green.svg)](https://developer.android.com)
+[![Flutter](https://img.shields.io/badge/Flutter-3.32+-02569B.svg)](https://flutter.dev)
+[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
 
-[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
-[![Flutter](https://img.shields.io/badge/Flutter-3.2+-blue.svg)](https://flutter.dev)
-[![Firebase](https://img.shields.io/badge/Firebase-Backend-orange.svg)](https://firebase.google.com)
-[![Version](https://img.shields.io/badge/Version-0.0.9-blue.svg)]()
-[![Status](https://img.shields.io/badge/Status-Beta-yellow.svg)]()
+> **Guest Self-Service Kiosk Terminal for Short-Term Rental Properties**
 
 ---
 
-## ⚠️ PRAVNA NAPOMENA / LEGAL NOTICE
+## ⚠️ PROPRIETARY LICENSE - STRICTLY ENFORCED
 
 ```
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║                                                                               ║
-║                    ⚖️  VLASNIČKI SOFTVER / PROPRIETARY SOFTWARE  ⚖️            ║
-║                                                                               ║
-╠═══════════════════════════════════════════════════════════════════════════════╣
-║                                                                               ║
-║  🇭🇷 HRVATSKI:                                                                 ║
-║  Ovaj softver je PRIVATNO VLASNIŠTVO i zaštićen zakonima o autorskim         ║
-║  pravima. Repozitorij je javno vidljiv ISKLJUČIVO u svrhu demonstracije.     ║
-║                                                                               ║
-║  🇬🇧 ENGLISH:                                                                  ║
-║  This software is PROPRIETARY and protected by copyright law.                ║
-║  Repository is publicly visible FOR DEMONSTRATION PURPOSES ONLY.             ║
-║                                                                               ║
-╠═══════════════════════════════════════════════════════════════════════════════╣
-║                                                                               ║
-║  🔒 STROGO ZABRANJENO / STRICTLY PROHIBITED:                                  ║
-║                                                                               ║
-║     ❌ Kopiranje, kloniranje ili preuzimanje koda                             ║
-║     ❌ Reverse engineering ili dekompilacija                                  ║
-║     ❌ Korištenje u komercijalne ili osobne svrhe                             ║
-║     ❌ Distribucija ili dijeljenje bilo kojeg dijela                          ║
-║     ❌ Kreiranje izvedenih djela                                              ║
-║     ❌ Korištenje za AI/ML treniranje                                         ║
-║                                                                               ║
-║  ⚖️ PRAVNE POSLJEDICE:                                                        ║
-║     Neovlašteno korištenje podliježe građanskoj i kaznenoj odgovornosti      ║
-║     prema međunarodnim zakonima o autorskim pravima (DMCA, Bern Convention). ║
-║                                                                               ║
-║  📧 Kontakt: nevenroksa@gmail.com | GitHub: @nroxa92                         ║
-║                                                                               ║
-║                        © 2025-2026 Sva prava pridržana                        ║
-║                                                                               ║
-╚═══════════════════════════════════════════════════════════════════════════════╝
+Copyright © 2024-2026 Neven Roksa. All Rights Reserved.
+
+This repository is PUBLIC FOR PORTFOLIO DEMONSTRATION ONLY.
+
+STRICTLY PROHIBITED:
+• Copying, cloning, forking, or downloading this code
+• Reverse engineering or decompiling
+• Commercial use of any kind
+• Use for AI/ML model training
+• Any unauthorized distribution
+
+LEGAL CONSEQUENCES:
+• DMCA takedown notices
+• Cease and desist orders  
+• Civil litigation for damages
+• Criminal prosecution where applicable
+
+Contact: nevenroksa@gmail.com | GitHub: @nroxa92
 ```
 
 ---
 
-## 📋 Sadržaj
+## Sažetak
 
-- [O Projektu](#-o-projektu)
-- [Vesta Lumina System](#-vesta-lumina-system)
-- [Statistika Projekta](#-statistika-projekta)
-- [Tehnička Arhitektura](#-tehnička-arhitektura)
-- [Kompletna Struktura Projekta](#-kompletna-struktura-projekta)
-- [Funkcionalnosti](#-funkcionalnosti)
-- [Kiosk Mode](#-kiosk-mode)
-- [OCR Scanning](#-ocr-scanning)
-- [Verzije](#-verzije)
+Tablet Terminal je Android kiosk aplikacija za samoposlužnu prijavu gostiju u kratkoročnom iznajmljivanju. Aplikacija omogućuje OCR skeniranje osobnih dokumenata, digitalno potpisivanje kućnog reda, AI chatbot asistenta te višejezičnu podršku. Dizajnirana je za rad u kiosk modu na tablet uređajima postavljenim u smještajnim jedinicama.
+
+## Pregled Sustava
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    VESTA LUMINA SUSTAV                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────────┐         ┌──────────────┐                     │
+│  │ Admin Panel  │◄───────►│   Firebase   │◄───────►┌──────────┐│
+│  │  (Flutter    │         │  (Firestore, │         │ Tablet   ││
+│  │   Web App)   │         │   Auth,      │         │ Terminal ││
+│  │              │         │   Storage,   │         │ (Android)││
+│  │  MASTER      │         │   Functions) │         │ SLAVE    ││
+│  └──────────────┘         └──────────────┘         └──────────┘│
+│        │                        │                       │       │
+│        │   Definira sadržaj     │   Sinkronizacija     │       │
+│        │   postavke, pravila    │   u realnom vremenu  │       │
+│        └────────────────────────┴───────────────────────┘       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Arhitektura Master-Slave
+
+| Komponenta | Uloga | Funkcija |
+|------------|-------|----------|
+| **Admin Panel** | MASTER | Definira kućna pravila, AI bazu znanja, postavke, screensaver slike |
+| **Tablet Terminal** | SLAVE | Prikazuje sadržaj, skenira dokumente, šalje podatke natrag |
+| **Firebase** | SYNC | Firestore (podaci), Auth (autentifikacija), Storage (mediji), Functions (logika) |
+
+## Upute za Korištenje
+
+### Za Vlasnike Smještaja
+
+1. **Postavljanje Tableta**
+   - Instalirajte aplikaciju na Android tablet (min. 10" zaslon, Android 8.0+)
+   - Povežite tablet na WiFi mrežu
+   - Pokrenite aplikaciju i unesite pristupni kod iz Admin Panela
+
+2. **Konfiguracija u Admin Panelu**
+   - Definirajte kućna pravila za svaku smještajnu jedinicu
+   - Postavite AI bazu znanja s odgovorima na česta pitanja
+   - Učitajte screensaver slike
+
+3. **Svakodnevno Korištenje**
+   - Tablet automatski prikazuje screensaver kada nije u upotrebi
+   - Gosti koriste tablet za self-check-in
+   - Svi podaci se automatski sinkroniziraju s Admin Panelom
+
+### Za Goste
+
+1. Dodirnite zaslon za početak prijave
+2. Unesite referentni broj rezervacije
+3. Skenirajte osobni dokument (putovnica/osobna iskaznica)
+4. Pregledajte i potvrdite svoje podatke
+5. Pročitajte i digitalno potpišite kućna pravila
+6. Pristupite WiFi podacima i korisnim informacijama
 
 ---
 
-## 🎯 O Projektu
+## Technical Documentation
 
-**Vesta Lumina Client Terminal** je Android tablet aplikacija dizajnirana za kiosk mode. Služi kao digitalna recepcija za goste smještajnih objekata, omogućujući samoposlužni check-in putem OCR skeniranja dokumenata.
+### Project Statistics
 
-### Ključne Značajke
+| Metric | Value |
+|--------|-------|
+| **Total Dart Code** | ~12,500 lines |
+| **Total Files** | 55+ |
+| **Screens** | 17 |
+| **Services** | 16 |
+| **Widgets** | 6 |
+| **Models** | 4 |
+| **Languages Supported** | 11 |
+| **Minimum Android** | 8.0 (API 26) |
 
-- Kiosk mode s potpunim zaključavanjem uređaja
-- MRZ OCR skeniranje putovnica i osobnih iskaznica
-- Digitalni potpis kućnih pravila
-- AI concierge chatbot
-- Offline podrška s automatskom sinkronizacijom
-- Podrška za 11 jezika
-- GDPR compliant automatsko brisanje podataka
-
----
-
-## 🌟 Vesta Lumina System
-
-**Vesta Lumina System** je kompletni ekosustav za upravljanje smještajnim objektima:
-
-| Komponenta | Opis | Tehnologija | Status |
-|------------|------|-------------|--------|
-| **Vesta Lumina Admin Panel** | Web aplikacija za vlasnike | Flutter Web | ✅ Beta |
-| **Vesta Lumina Client Terminal** | Tablet aplikacija za goste (Kiosk mode) | Flutter Android | ✅ Beta |
-| **Firebase Backend** | Cloud infrastruktura | Firebase | ✅ Aktivan |
-
-### Arhitektura
+### Project Structure
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        VESTA LUMINA SYSTEM                          │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│   ┌─────────────────┐         ┌─────────────────┐                  │
-│   │   ADMIN PANEL   │◄───────►│    FIREBASE     │                  │
-│   │   (Web Panel)   │         │    BACKEND      │                  │
-│   │     MASTER      │         │                 │                  │
-│   └─────────────────┘         └────────┬────────┘                  │
-│                                        │                            │
-│                                        ▼                            │
-│                               ┌─────────────────┐                  │
-│                               │ CLIENT TERMINAL │                  │
-│                               │    (Tablet)     │                  │
-│                               │     SLAVE       │                  │
-│                               └─────────────────┘                  │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+tablet_terminal/
+├── android/                    # Android native configuration
+│   ├── app/
+│   │   ├── build.gradle       # App-level build config
+│   │   └── src/main/
+│   │       ├── AndroidManifest.xml
+│   │       └── kotlin/        # Native Kotlin code
+│   └── build.gradle           # Project-level build config
+├── lib/
+│   ├── main.dart              # Application entry point
+│   ├── firebase_options.dart  # Firebase configuration
+│   ├── models/                # Data models
+│   │   ├── booking_model.dart
+│   │   ├── guest_model.dart
+│   │   ├── house_rules_model.dart
+│   │   └── unit_model.dart
+│   ├── screens/               # UI screens (17 total)
+│   │   ├── splash_screen.dart
+│   │   ├── pairing_screen.dart
+│   │   ├── screensaver_screen.dart
+│   │   ├── welcome_screen.dart
+│   │   ├── booking_lookup_screen.dart
+│   │   ├── guest_count_screen.dart
+│   │   ├── document_scan_screen.dart
+│   │   ├── manual_entry_screen.dart
+│   │   ├── guest_confirmation_screen.dart
+│   │   ├── additional_guest_screen.dart
+│   │   ├── house_rules_screen.dart
+│   │   ├── signature_screen.dart
+│   │   ├── checkin_success_screen.dart
+│   │   ├── wifi_info_screen.dart
+│   │   ├── chatbot_screen.dart
+│   │   ├── feedback_screen.dart
+│   │   └── cleaner_screen.dart
+│   ├── services/              # Business logic (16 total)
+│   │   ├── firebase_service.dart
+│   │   ├── auth_service.dart
+│   │   ├── pairing_service.dart
+│   │   ├── booking_service.dart
+│   │   ├── checkin_service.dart
+│   │   ├── ocr_service.dart
+│   │   ├── document_parser_service.dart
+│   │   ├── signature_service.dart
+│   │   ├── house_rules_service.dart
+│   │   ├── screensaver_service.dart
+│   │   ├── wifi_service.dart
+│   │   ├── chatbot_service.dart
+│   │   ├── feedback_service.dart
+│   │   ├── cleaner_service.dart
+│   │   ├── offline_service.dart
+│   │   └── analytics_service.dart
+│   ├── widgets/               # Reusable components
+│   │   ├── custom_button.dart
+│   │   ├── loading_overlay.dart
+│   │   ├── language_selector.dart
+│   │   ├── keyboard_widget.dart
+│   │   ├── signature_pad.dart
+│   │   └── chat_bubble.dart
+│   ├── utils/                 # Utilities
+│   │   ├── constants.dart
+│   │   ├── validators.dart
+│   │   └── formatters.dart
+│   └── l10n/                  # Localization
+│       ├── app_en.arb
+│       ├── app_hr.arb
+│       ├── app_de.arb
+│       ├── app_it.arb
+│       ├── app_sl.arb
+│       ├── app_fr.arb
+│       ├── app_es.arb
+│       ├── app_pt.arb
+│       ├── app_nl.arb
+│       ├── app_pl.arb
+│       └── app_cs.arb
+├── assets/
+│   ├── images/
+│   ├── fonts/
+│   └── animations/
+├── pubspec.yaml               # Dependencies
+└── LICENSE                    # Proprietary license
 ```
 
----
+### Core Features
 
-## 📊 Statistika Projekta
+#### 1. OCR Document Scanning
+```dart
+// Supported document types
+- EU ID Cards (all member states)
+- Passports (MRZ zone reading)
+- Driving Licenses (EU format)
 
-```
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║                  VESTA LUMINA CLIENT TERMINAL v0.0.9                          ║
-║                          KOMPLETNA STATISTIKA                                 ║
-╠═══════════════════════════════════════════════════════════════════════════════╣
-║                                                                               ║
-║  📁 IZVORNI KOD (lib/)                                                        ║
-║  ───────────────────────────────────────────────────────────────────────────  ║
-║  │ Screens (17 datoteka)             │ 5,200+ linija                         ║
-║  │ Services (15 datoteka)            │ 3,500+ linija                         ║
-║  │ Widgets (6 datoteka)              │ 600+ linija                           ║
-║  │ Models (3 datoteke)               │ 300+ linija                           ║
-║  │ Config (2 datoteke)               │ 400+ linija                           ║
-║  │ Utils (2 datoteke)                │ 250+ linija                           ║
-║  │ Barrel Files (10 datoteka)        │ 100+ linija                           ║
-║  │ Root (main.dart)                  │ 230+ linija                           ║
-║  │                                                                           ║
-║  │ UKUPNO DART KOD                   │ ~12,000 linija                        ║
-║                                                                               ║
-║  📱 ANDROID NATIVE                                                            ║
-║  ───────────────────────────────────────────────────────────────────────────  ║
-║  │ Kiosk Mode (DevicePolicyManager)  │ Native integration                    ║
-║  │ Camera (ML Kit)                   │ MRZ scanning                          ║
-║                                                                               ║
-║  🌍 LOKALIZACIJA                                                              ║
-║  ───────────────────────────────────────────────────────────────────────────  ║
-║  │ Podržani jezici                   │ 11 jezika                             ║
-║  │ EN, HR, DE, IT, ES, FR, PL, SK, CS, HU, SL                                ║
-║                                                                               ║
-║  ☁️ FIREBASE INTEGRACIJA                                                      ║
-║  ───────────────────────────────────────────────────────────────────────────  ║
-║  │ Firestore (read/write)            │ 6 kolekcija                           ║
-║  │ Storage (signatures)              │ PNG upload                            ║
-║  │ Auth (anonymous + custom)         │ Session management                    ║
-║                                                                               ║
-║  ═══════════════════════════════════════════════════════════════════════════  ║
-║  │ UKUPNO LINIJA KODA                │ ~12,000 linija                        ║
-║  │ UKUPNO DATOTEKA                   │ 45+ datoteka                          ║
-║                                                                               ║
-╚═══════════════════════════════════════════════════════════════════════════════╝
+// ML Kit integration
+- Real-time text recognition
+- Automatic field extraction
+- Multi-language support
 ```
 
----
-
-## 🏗️ Tehnička Arhitektura
-
-### Technology Stack
-
-```
-┌────────────────────────────────────────────────────────────────────┐
-│                           FRONTEND                                  │
-│  Flutter 3.2+ │ Dart 3.x │ Material Design │ Hive Local Storage    │
-├────────────────────────────────────────────────────────────────────┤
-│                           BACKEND                                   │
-│  Firebase Auth │ Cloud Firestore │ Cloud Storage │ Sentry.io       │
-├────────────────────────────────────────────────────────────────────┤
-│                         NATIVE ANDROID                              │
-│  ML Kit OCR │ DevicePolicyManager │ Camera2 API │ Kiosk Mode       │
-└────────────────────────────────────────────────────────────────────┘
+#### 2. Kiosk Mode
+```dart
+// Android kiosk mode features
+- Lock Task Mode (COSU)
+- Disable navigation buttons
+- Prevent screen timeout
+- Auto-restart on crash
+- OTA updates support
 ```
 
-### Slave-Master Architecture
-
-Tablet je **SLAVE** komponenta koja slijedi strukturu Web Panela (**MASTER**):
-
-| Aspect | Rule |
-|--------|------|
-| **Data Structure** | Must match Web Panel Firestore schema |
-| **Field Naming** | camelCase (matching Web Panel) |
-| **Guests Storage** | Subcollection under bookings |
-| **Signatures** | Firebase Storage URLs |
-| **Tenant Isolation** | All data under owners/{ownerId}/... |
-
----
-
-## 📁 Kompletna Struktura Projekta
-
+#### 3. Check-in Flow
 ```
-lib/
-├── main.dart                          # Entry point (230 lines)
-│
-├── config/                            # Konfiguracija
-│   ├── config.dart                    # 🆕 Barrel export
-│   ├── constants.dart                 # API keys, Firebase config
-│   └── theme.dart                     # Dark theme, colors
-│
-├── data/
-│   ├── models/                        # Data modeli
-│   │   ├── models.dart                # 🆕 Barrel export
-│   │   ├── chat_message.dart          # AI chat message
-│   │   ├── guest_model.dart           # Guest data
-│   │   └── place.dart                 # Place recommendation
-│   │
-│   └── services/                      # Business logic (15 services)
-│       ├── services.dart              # 🆕 Barrel export
-│       ├── storage_service.dart       # Hive local storage
-│       ├── firestore_service.dart     # Firebase sync
-│       ├── tablet_auth_service.dart   # Authentication
-│       ├── checkin_service.dart       # Check-in flow
-│       ├── checkin_validator.dart     # Data validation
-│       ├── ocr_service.dart           # MRZ scanning
-│       ├── signature_storage_service.dart # Signature upload
-│       ├── kiosk_service.dart         # Kiosk mode control
-│       ├── sentry_service.dart        # Error tracking
-│       ├── performance_service.dart   # Performance monitoring
-│       ├── connectivity_service.dart  # Network status
-│       ├── offline_queue_service.dart # Offline operations
-│       ├── gemini_service.dart        # AI chatbot
-│       ├── weather_service.dart       # Weather API
-│       └── places_service.dart        # Places API
-│
-├── ui/
-│   ├── screens/                       # Ekrani (17 screens)
-│   │   ├── screens.dart               # 🆕 Barrel export
-│   │   ├── welcome_screen.dart        # Language selection
-│   │   ├── setup_screen.dart          # Unit code entry
-│   │   ├── dashboard_screen.dart      # Main dashboard
-│   │   ├── house_rules_screen.dart    # Rules + signature
-│   │   ├── chat_screen.dart           # AI chatbot
-│   │   ├── feedback_screen.dart       # Guest feedback
-│   │   ├── screensaver_screen.dart    # Idle screen
-│   │   │
-│   │   ├── admin/                     # 🆕 Admin Panel
-│   │   │   ├── admin_screens.dart     # Barrel export
-│   │   │   ├── admin_menu_screen.dart # Admin options
-│   │   │   └── debug_screen.dart      # 5-tab debug panel
-│   │   │
-│   │   ├── checkin/                   # Check-in flow
-│   │   │   ├── checkin_screens.dart   # Barrel export
-│   │   │   ├── checkin_intro_screen.dart
-│   │   │   ├── document_selection_screen.dart
-│   │   │   ├── camera_screen.dart     # OCR scanning
-│   │   │   ├── guest_confirmation_screen.dart
-│   │   │   ├── guest_scan_coordinator.dart
-│   │   │   └── checkin_success_screen.dart
-│   │   │
-│   │   └── cleaner/                   # Cleaner flow
-│   │       ├── cleaner_screens.dart   # Barrel export
-│   │       ├── cleaner_login_screen.dart
-│   │       └── cleaner_tasks_screen.dart
-│   │
-│   └── widgets/                       # Reusable widgets
-│       ├── widgets.dart               # 🆕 Barrel export
-│       ├── error_boundary.dart
-│       ├── kiosk_exit_dialog.dart
-│       ├── offline_indicator.dart
-│       ├── place_card.dart
-│       └── welcome_message_overlay.dart
-│
-└── utils/                             # Utilities
-    ├── utils.dart                     # 🆕 Barrel export
-    ├── inactivity_wrapper.dart        # Screensaver trigger
-    └── translations.dart              # 11 languages
-```
-
----
-
-## 🔧 Funkcionalnosti
-
-### Guest Check-in Flow
-
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Welcome   │───►│  Check-in   │───►│   Camera    │───►│   Confirm   │
-│   Screen    │    │    Intro    │    │  MRZ Scan   │    │    Data     │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-                                                                │
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐           │
-│  Dashboard  │◄───│   Success   │◄───│  Signature  │◄──────────┘
-│             │    │   Screen    │    │  House Rules│
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  Screensaver │───►│   Welcome   │───►│   Booking   │
+│   (idle)     │    │   Screen    │    │   Lookup    │
+└─────────────┘    └─────────────┘    └──────┬──────┘
+                                              │
+                                              ▼
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   Success   │◄───│  Signature  │◄───│   House     │
+│   Screen    │    │   Screen    │    │   Rules     │
+└─────────────┘    └─────────────┘    └──────┬──────┘
+                                              │
+                                              ▲
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  Additional │◄───│   Guest     │◄───│  Document   │
+│   Guests    │    │   Confirm   │    │   Scan/OCR  │
 └─────────────┘    └─────────────┘    └─────────────┘
 ```
 
-### Features Matrix
+#### 4. AI Chatbot
+- Powered by OpenAI GPT-4
+- Property-specific knowledge base
+- Multi-language conversations
+- Offline fallback responses
 
-| Feature | Status | Description |
-|---------|--------|-------------|
-| Multi-language | ✅ | 11 languages |
-| MRZ OCR Scan | ✅ | Passport/ID scanning |
-| Digital Signature | ✅ | House rules signing |
-| AI Chatbot | ✅ | Gemini-powered concierge |
-| Kiosk Mode | ✅ | Full device lockdown |
-| Offline Support | ✅ | Queue + auto-sync |
-| Brute-force Protection | ✅ | 5 attempts → 5 min lockout |
-| Admin Panel | ✅ | Debug + Factory Reset |
-| Sentry Monitoring | ✅ | Crash reporting |
-| Firebase Sync | ✅ | Real-time data |
+#### 5. Cleaner Mode
+- PIN-protected access
+- Digital cleaning checklists
+- Photo documentation
+- Issue reporting
+- Completion confirmation
+
+### Technology Stack
+
+| Category | Technology |
+|----------|------------|
+| **Framework** | Flutter 3.32+ |
+| **Language** | Dart 3.5+ |
+| **State Management** | Provider + Riverpod |
+| **Local Database** | Hive |
+| **Cloud Backend** | Firebase Suite |
+| **OCR Engine** | Google ML Kit |
+| **AI/Chat** | OpenAI API |
+| **Monitoring** | Sentry |
+| **Analytics** | Firebase Analytics |
+
+### Firebase Integration
+
+```dart
+// Firestore Collections accessed
+owners/{ownerId}/
+  ├── settings              // Terminal configuration
+  ├── units/{unitId}/       // Property units
+  │   ├── bookings/{bookingId}/
+  │   │   └── guests[]      // Guest array (not subcollection)
+  │   ├── house_rules       // Rules document
+  │   └── ai_knowledge      // Chatbot knowledge base
+  └── cleaning_logs/{logId} // Cleaning records
+```
+
+### Data Flow
+
+#### From Admin Panel → Tablet
+- House rules content
+- AI knowledge base
+- WiFi credentials
+- Screensaver images
+- Cleaning checklists
+- Owner contact info
+
+#### From Tablet → Admin Panel
+- Scanned guest data (OCR)
+- Digital signatures (PNG)
+- Cleaning completion logs
+- AI chat transcripts
+- Guest feedback
+- Error reports
+
+### Security Model
+
+| Layer | Implementation |
+|-------|----------------|
+| **Authentication** | Firebase Auth (anonymous + custom tokens) |
+| **Authorization** | Firestore Security Rules |
+| **Data Encryption** | TLS 1.3 in transit, AES-256 at rest |
+| **Local Storage** | Encrypted Hive boxes |
+| **Kiosk Security** | Android Device Owner mode |
+| **GDPR Compliance** | Auto-delete after checkout |
+
+### Localization
+
+| Language | Code | Status |
+|----------|------|--------|
+| English | `en` | ✅ Complete |
+| Croatian | `hr` | ✅ Complete |
+| German | `de` | ✅ Complete |
+| Italian | `it` | ✅ Complete |
+| Slovenian | `sl` | ✅ Complete |
+| French | `fr` | ✅ Complete |
+| Spanish | `es` | ✅ Complete |
+| Portuguese | `pt` | ✅ Complete |
+| Dutch | `nl` | ✅ Complete |
+| Polish | `pl` | ✅ Complete |
+| Czech | `cs` | ✅ Complete |
+
+### Minimum Requirements
+
+| Requirement | Specification |
+|-------------|---------------|
+| **Android Version** | 8.0 (API 26)+ |
+| **Screen Size** | 10" minimum |
+| **RAM** | 2GB+ |
+| **Storage** | 500MB free |
+| **Camera** | 5MP+ (for OCR) |
+| **Connectivity** | WiFi (offline mode available) |
+
+### Offline Capabilities
+
+```dart
+// Offline-first architecture
+- Hive local database for caching
+- Queue system for pending syncs
+- Automatic retry on reconnection
+- Graceful degradation of features
+- Offline AI responses (FAQ-based)
+```
 
 ---
 
-## 🔒 Kiosk Mode
+## Version History
 
-### Features
-
-- Full screen immersive mode
-- System bars hidden
-- Home/Back button disabled
-- App pinning via DevicePolicyManager
-- Remote enable/disable from Web Panel
-- Auto re-enable on app resume
-
-### Admin Access
-
-```
-Dashboard → Staff Access → Master PIN → Admin Menu
-                                           │
-                              ┌────────────┼────────────┐
-                              ▼            ▼            ▼
-                         Debug Panel  Kiosk Disable  Factory Reset
-                         (5 tabs)     (5 min temp)   (Unlink device)
-```
+| Version | Date | Changes |
+|---------|------|---------|
+| 3.0.0 | 2026-01 | Multi-guest support, enhanced OCR |
+| 2.5.0 | 2025-11 | AI chatbot integration |
+| 2.0.0 | 2025-09 | Cleaner mode, offline support |
+| 1.5.0 | 2025-07 | Signature capture, house rules |
+| 1.0.0 | 2025-05 | Initial release |
 
 ---
 
-## 📷 OCR Scanning
+## Related Components
 
-### MRZ Detection
-
-- **Supported Documents:** Passport, ID Card
-- **Technology:** Google ML Kit Text Recognition
-- **Extracted Data:**
-  - First Name, Last Name
-  - Date of Birth
-  - Nationality
-  - Document Number
-  - Document Type
-
-### Camera Setup
-
-- Rear camera with mirror (for wall-mounted tablets)
-- Auto-capture every 1.5 seconds
-- Manual capture option
-- Real-time feedback
+| Component | Repository | Description |
+|-----------|------------|-------------|
+| **Admin Panel** | [admin_panel](https://github.com/nroxa92/admin_panel) | Owner management dashboard |
+| **Documentation** | This README | Technical documentation |
 
 ---
 
-## 📌 Verzije
+## Contact
 
-### Trenutna verzija: 0.0.9 (Siječanj 2026)
-
-```
-v0.0.9 - Beta Release (Siječanj 2026)
-═══════════════════════════════════════════════════════════════
-✅ Admin Panel (Admin Menu + Debug Screen)
-✅ Barrel File Implementation (10 files)
-✅ Fixed checkin_service.dart field naming
-✅ QA Checklist (80+ test cases)
-
-v0.0.8 - Kiosk Mode
-═══════════════════════════════════════════════════════════════
-✅ Full Kiosk Lockdown
-✅ Remote Control from Web Panel
-✅ App Lifecycle Handling
-
-v0.0.7 - Monitoring & Security
-═══════════════════════════════════════════════════════════════
-✅ Sentry Error Tracking
-✅ Brute-force Protection
-✅ Performance Monitoring
-
-v0.0.1 - Core System
-═══════════════════════════════════════════════════════════════
-✅ MRZ OCR Scanning
-✅ Digital Signature
-✅ Firebase Sync
-✅ 11 Languages
-```
+**Developer:** Neven Roksa  
+**Email:** nevenroksa@gmail.com  
+**GitHub:** [@nroxa92](https://github.com/nroxa92)
 
 ---
 
-## 📜 Licenca
-
-Ovaj softver je zaštićen **vlasničkom licencom**. Pogledajte [LICENSE](LICENSE) datoteku za potpune uvjete.
-
-```
-© 2025-2026 Sva prava pridržana.
-Neovlašteno kopiranje ili korištenje je strogo zabranjeno.
-```
-
----
-
-## 📧 Kontakt
-
-Za upite o licenciranju ili poslovnu suradnju:
-
-- **GitHub:** [@nroxa92](https://github.com/nroxa92)
-- **Email:** nevenroksa@gmail.com
-
----
-
-<div align="center">
-
-**Vesta Lumina Client Terminal** | Part of **Vesta Lumina System**
-
-*Digital Reception for Vacation Rentals*
-
-*Built with Flutter & Firebase*
-
-v0.0.9 Beta
-
-</div>
+<p align="center">
+  <strong>Vesta Lumina System</strong><br>
+  <em>Transforming Guest Experience in Short-Term Rentals</em><br><br>
+  © 2024-2026 Neven Roksa. All Rights Reserved.
+</p>
